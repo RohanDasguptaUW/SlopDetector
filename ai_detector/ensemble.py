@@ -6,10 +6,11 @@ from typing import Optional
 from .analyzers.base import AnalysisResult
 
 _DEFAULT_WEIGHTS: dict[str, float] = {
-    "claude": 0.50,
-    "ela": 0.25,
-    "spectral": 0.15,
-    "metadata": 0.10,
+    "claude": 0.45,
+    "ela": 0.20,
+    "spectral": 0.13,
+    "noise": 0.15,
+    "metadata": 0.07,
 }
 
 

@@ -10,6 +10,7 @@ from ai_detector.analyzers.base import AnalysisResult
 from ai_detector.analyzers.ela import ELAAnalyzer
 from ai_detector.analyzers.spectral import SpectralAnalyzer
 from ai_detector.analyzers.metadata import MetadataAnalyzer
+from ai_detector.analyzers.noise import NoiseAnalyzer
 from ai_detector import ensemble
 
 
@@ -191,6 +192,81 @@ class TestMetadataAnalyzer:
         img = _rgb_image()
         path = _save_tmp_image(tmp_path, img)
         result = MetadataAnalyzer().analyze(path)
+        assert isinstance(result.indicators, list)
+        assert len(result.indicators) > 0
+
+
+# ─── Noise ────────────────────────────────────────────────────────────────────
+
+def _flat_image(w: int = 64, h: int = 64, value: int = 128) -> Image.Image:
+    """Perfectly flat image — maximum over-smoothness signal."""
+    arr = np.full((h, w, 3), value, dtype=np.uint8)
+    return Image.fromarray(arr, "RGB")
+
+
+def _shot_noise_image(w: int = 64, h: int = 64) -> Image.Image:
+    """Gradient image with Poisson-like noise: noise variance ∝ signal level."""
+    rng = np.random.default_rng(99)
+    base = np.linspace(10, 240, w, dtype=np.float32)
+    arr = np.tile(base, (h, 1))
+    # Add noise proportional to sqrt(signal) to simulate shot noise
+    noise = rng.standard_normal((h, w)) * np.sqrt(arr) * 0.5
+    arr = np.clip(arr + noise, 0, 255).astype(np.uint8)
+    rgb = np.stack([arr, arr, arr], axis=2)
+    return Image.fromarray(rgb, "RGB")
+
+
+class TestNoiseAnalyzer:
+    def test_returns_analysis_result(self, tmp_path):
+        img = _rgb_image()
+        path = _save_tmp_image(tmp_path, img, "test.png")
+        result = NoiseAnalyzer().analyze(path)
+        assert isinstance(result, AnalysisResult)
+        assert result.analyzer == "noise"
+
+    def test_ai_percentage_in_range(self, tmp_path):
+        img = _rgb_image()
+        path = _save_tmp_image(tmp_path, img, "test.png")
+        result = NoiseAnalyzer().analyze(path)
+        assert 0.0 <= result.ai_percentage <= 100.0
+
+    def test_confidence_in_range(self, tmp_path):
+        img = _rgb_image()
+        path = _save_tmp_image(tmp_path, img, "test.png")
+        result = NoiseAnalyzer().analyze(path)
+        assert 0.0 <= result.confidence <= 1.0
+
+    def test_heatmap_shape_and_range(self, tmp_path):
+        w, h = 80, 64
+        img = _rgb_image(w, h)
+        path = _save_tmp_image(tmp_path, img, "test.png")
+        result = NoiseAnalyzer().analyze(path)
+        assert result.heatmap is not None
+        assert result.heatmap.shape == (h, w)
+        assert float(result.heatmap.min()) >= 0.0
+        assert float(result.heatmap.max()) <= 1.0
+
+    def test_flat_image_scores_high(self, tmp_path):
+        """Perfectly flat image (no noise, no texture) should score high AI."""
+        flat = _flat_image(64, 64, value=128)
+        path = _save_tmp_image(tmp_path, flat, "flat.png")
+        result = NoiseAnalyzer().analyze(path)
+        assert result.ai_percentage > 50.0
+
+    def test_shot_noise_image_scores_lower_than_flat(self, tmp_path):
+        """Image with Poisson-like noise should score lower than a flat image."""
+        flat = _flat_image(64, 64)
+        noisy = _shot_noise_image(64, 64)
+        flat_path = _save_tmp_image(tmp_path, flat, "flat.png")
+        noisy_path = _save_tmp_image(tmp_path, noisy, "noisy.png")
+        flat_result = NoiseAnalyzer().analyze(flat_path)
+        noisy_result = NoiseAnalyzer().analyze(noisy_path)
+        assert flat_result.ai_percentage > noisy_result.ai_percentage
+
+    def test_has_indicators(self, tmp_path):
+        img = _rgb_image()
+        path = _save_tmp_image(tmp_path, img, "test.png")
+        result = NoiseAnalyzer().analyze(path)
         assert isinstance(result.indicators, list)
         assert len(result.indicators) > 0
 

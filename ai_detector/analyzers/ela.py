@@ -37,12 +37,14 @@ class ELAAnalyzer(BaseAnalyzer):
         heatmap = heatmap.astype(np.float32)
 
         # Low CV → suspiciously uniform → higher AI score
-        # High mean → more difference from JPEG recompression → more real
-        # Score: blend of inverse-CV and inverse mean
+        # Low amplitude → minimal JPEG artefacts → AI-like (no prior compression history)
+        # Amplitude is the more reliable of the two signals: high-contrast images (dark
+        # background + bright face) naturally produce high CV even when AI-generated, so
+        # weighting amplitude more heavily reduces false negatives on those images.
         cv_score = max(0.0, 1.0 - cv)          # 0=natural, 1=uniform (AI-like)
         amp_score = max(0.0, 1.0 - mean_amp / 30.0)  # low amplitude also suspicious
 
-        raw_score = 0.5 * cv_score + 0.5 * amp_score
+        raw_score = 0.30 * cv_score + 0.70 * amp_score
         ai_percentage = float(np.clip(raw_score * 100, 0, 100))
 
         # Confidence higher when signal is clear
