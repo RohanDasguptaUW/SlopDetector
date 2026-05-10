@@ -6,6 +6,8 @@ from .spectral import SpectralAnalyzer
 from .metadata import MetadataAnalyzer
 from .noise import NoiseAnalyzer
 from .claude import ClaudeAnalyzer
+from .c2pa import C2PAAnalyzer
+from .hive import HiveAnalyzer
 
 __all__ = [
     "AnalysisResult",
@@ -14,4 +16,6 @@ __all__ = [
     "MetadataAnalyzer",
     "NoiseAnalyzer",
     "ClaudeAnalyzer",
+    "C2PAAnalyzer",
+    "HiveAnalyzer",
 ]

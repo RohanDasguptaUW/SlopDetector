@@ -16,9 +16,13 @@ dependencies = [
     "Pillow>=10.0",
     "rich>=13.0",
     "scipy>=1.10",
+    "requests>=2.31",
 ]
 
 [project.optional-dependencies]
+c2pa = [
+    "c2pa-python>=0.5",
+]
 dev = [
     "pytest>=7.0",
     "pytest-mock>=3.0",
