@@ -47,17 +47,31 @@ class SpectralAnalyzer(BaseAnalyzer):
         spike_mask[3:] = residual[3:] > spike_threshold
         n_spikes = int(spike_mask.sum())
 
-        # 1/f fit residual (log-log space, skip DC)
+        # 1/f fit residual (log-log space, skip DC) + high-frequency noise floor deficit
         r_range = np.arange(3, max_radius + 1)
         valid = radial_power[3:] > 0
+        residual_std = 0.0
+        hf_deficit_score = 0.0
         if valid.sum() > 10:
             log_r = np.log(r_range[valid])
             log_p = np.log(radial_power[3:][valid])
             coeffs = np.polyfit(log_r, log_p, 1)
             fit = np.polyval(coeffs, log_r)
             residual_std = float(np.std(log_p - fit))
-        else:
-            residual_std = 0.0
+
+            # Real camera photos maintain a sensor-noise floor at high spatial frequencies,
+            # keeping actual power at or above the 1/f prediction.
+            # Diffusion model images have no sensor noise, so high-frequency power falls
+            # sharply below the 1/f trend — this deficit is the primary signal here.
+            hf_start = max(3, int(max_radius * 0.60))
+            hf_mask = r_range >= hf_start
+            hf_actual = radial_power[3:][hf_mask]
+            hf_valid = hf_actual > 0
+            if hf_valid.sum() > 5:
+                hf_r = r_range[hf_mask][hf_valid]
+                hf_predicted = np.exp(np.polyval(coeffs, np.log(hf_r)))
+                ratio = float(np.median(hf_actual[hf_valid] / (hf_predicted + 1e-10)))
+                hf_deficit_score = float(np.clip(1.0 - ratio, 0.0, 1.0))
 
         # Build heatmap from anomalous frequencies (inverse FFT of spike region)
         anomaly_mask = spike_mask[r_int]
@@ -67,20 +81,22 @@ class SpectralAnalyzer(BaseAnalyzer):
         hmap_max = spatial_anomaly.max()
         heatmap = spatial_anomaly / (hmap_max + 1e-6)
 
-        # Score
+        # Score — spike detection targets old-style GANs; HF deficit targets diffusion models
         spike_score = min(1.0, n_spikes / 20.0)
         residual_score = min(1.0, residual_std / 2.0)
-        raw_score = 0.6 * spike_score + 0.4 * residual_score
+        raw_score = 0.25 * spike_score + 0.20 * residual_score + 0.55 * hf_deficit_score
         ai_percentage = float(np.clip(raw_score * 100, 0, 100))
 
-        confidence = float(np.clip(0.3 + 0.7 * max(spike_score, residual_score), 0, 1))
+        confidence = float(np.clip(0.3 + 0.7 * max(spike_score, residual_score, hf_deficit_score), 0, 1))
 
         indicators: list[str] = []
         if n_spikes > 5:
             indicators.append(f"Off-centre spectral spikes detected ({n_spikes}) — GAN checkerboard artefact")
         if residual_std > 0.8:
             indicators.append(f"Deviation from 1/f power law (residual std={residual_std:.3f})")
-        if n_spikes == 0 and residual_std < 0.3:
+        if hf_deficit_score > 0.4:
+            indicators.append(f"High-frequency noise floor absent (deficit={hf_deficit_score:.2f}) — no sensor noise signature")
+        if n_spikes == 0 and residual_std < 0.3 and hf_deficit_score < 0.3:
             indicators.append("Spectral profile consistent with natural image")
 
         return AnalysisResult(
