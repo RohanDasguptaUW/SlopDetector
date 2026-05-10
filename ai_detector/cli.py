@@ -199,3 +199,7 @@ def main(
 
     if json_out:
         console.print_json(json.dumps(all_summaries, indent=2))
+
+
+if __name__ == "__main__":
+    main()
