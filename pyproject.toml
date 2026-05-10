@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "slopdetector"
+version = "0.1.0"
+description = "Estimate what percentage of an image is AI-generated"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11"
+dependencies = [
+    "anthropic>=0.25",
+    "click>=8.1",
+    "numpy>=1.24",
+    "Pillow>=10.0",
+    "rich>=13.0",
+    "scipy>=1.10",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-mock>=3.0",
+]
+
+[project.scripts]
+ai-detect = "ai_detector.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["ai_detector*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
