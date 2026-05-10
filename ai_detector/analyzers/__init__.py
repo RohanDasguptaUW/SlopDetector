@@ -4,6 +4,7 @@ from .base import AnalysisResult
 from .ela import ELAAnalyzer
 from .spectral import SpectralAnalyzer
 from .metadata import MetadataAnalyzer
+from .noise import NoiseAnalyzer
 from .claude import ClaudeAnalyzer
 
 __all__ = [
@@ -11,5 +12,6 @@ __all__ = [
     "ELAAnalyzer",
     "SpectralAnalyzer",
     "MetadataAnalyzer",
+    "NoiseAnalyzer",
     "ClaudeAnalyzer",
 ]
