@@ -17,6 +17,7 @@ from .analyzers.base import AnalysisResult
 from .analyzers.ela import ELAAnalyzer
 from .analyzers.spectral import SpectralAnalyzer
 from .analyzers.metadata import MetadataAnalyzer
+from .analyzers.noise import NoiseAnalyzer
 
 console = Console()
 
@@ -54,7 +55,7 @@ def _analyse_image(
 ) -> tuple[list[AnalysisResult], dict]:
     results: list[AnalysisResult] = []
 
-    analyzers = [ELAAnalyzer(), SpectralAnalyzer(), MetadataAnalyzer()]
+    analyzers = [ELAAnalyzer(), SpectralAnalyzer(), MetadataAnalyzer(), NoiseAnalyzer()]
     if use_claude:
         from .analyzers.claude import ClaudeAnalyzer
         analyzers.append(ClaudeAnalyzer(model=model))
