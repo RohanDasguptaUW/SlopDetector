@@ -1,10 +1,10 @@
-"""Claude AI analyzer — single API call with 3×3 grid scores."""
+"""Gemini AI analyzer — single API call with 3×3 grid scores."""
 
 import base64
+import io
 import json
-import re
 import os
-from pathlib import Path
+import re
 
 import numpy as np
 from PIL import Image
@@ -42,97 +42,74 @@ Signals to examine:
 
 def _bicubic_interpolate_grid(grid_3x3: list[list[float]], target_h: int, target_w: int) -> np.ndarray:
     """Bicubic-interpolate a 3×3 score grid to (target_h, target_w)."""
-    arr = np.array(grid_3x3, dtype=np.float32)  # shape (3, 3)
+    arr = np.array(grid_3x3, dtype=np.float32)
     pil_grid = Image.fromarray((arr / 10.0 * 255).astype(np.uint8), mode="L")
     upscaled = pil_grid.resize((target_w, target_h), resample=Image.BICUBIC)
-    result = np.array(upscaled, dtype=np.float32) / 255.0
-    return result
+    return np.array(upscaled, dtype=np.float32) / 255.0
 
 
-class ClaudeAnalyzer(BaseAnalyzer):
-    name = "claude"
+class GeminiAnalyzer(BaseAnalyzer):
+    name = "gemini"
 
-    def __init__(self, model: str = "claude-sonnet-4-6"):
+    def __init__(self, model: str = "gemini-2.5-flash"):
         self.model = model
 
     def analyze(self, image_path: str) -> AnalysisResult:
         try:
-            import anthropic
+            import google.generativeai as genai  # type: ignore[import]
         except ImportError:
             return AnalysisResult(
                 analyzer=self.name,
                 ai_percentage=50.0,
                 confidence=0.0,
-                indicators=["anthropic package not installed — Claude analysis skipped"],
-                heatmap=None,
+                indicators=["google-generativeai package not installed — Gemini analysis skipped"],
+            )
+
+        api_key = os.environ.get("GOOGLE_API_KEY", "")
+        if not api_key:
+            return AnalysisResult(
+                analyzer=self.name,
+                ai_percentage=50.0,
+                confidence=0.0,
+                indicators=["GOOGLE_API_KEY not set — Gemini analysis skipped"],
             )
 
         img = Image.open(image_path)
         H, W = img.size[1], img.size[0]
 
-        # Encode image as base64 JPEG (≤1MP for speed)
+        # Downscale to ≤1MP for speed/cost
         max_pixels = 1_000_000
         if H * W > max_pixels:
             scale = (max_pixels / (H * W)) ** 0.5
             img = img.resize((int(W * scale), int(H * scale)), Image.LANCZOS)
 
-        import io
-        buf = io.BytesIO()
-        rgb = img.convert("RGB")
-        rgb.save(buf, format="JPEG", quality=85)
-        b64_data = base64.standard_b64encode(buf.getvalue()).decode("utf-8")
-
-        client = anthropic.Anthropic()
+        genai.configure(api_key=api_key)
+        gemini_model = genai.GenerativeModel(
+            model_name=self.model,
+            system_instruction=_SYSTEM_PROMPT,
+        )
 
         try:
-            response = client.messages.create(
-                model=self.model,
-                max_tokens=1024,
-                system=_SYSTEM_PROMPT,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "image",
-                                "source": {
-                                    "type": "base64",
-                                    "media_type": "image/jpeg",
-                                    "data": b64_data,
-                                },
-                            },
-                            {
-                                "type": "text",
-                                "text": "Analyse this image and return only the JSON object as specified.",
-                            },
-                        ],
-                    }
-                ],
+            response = gemini_model.generate_content(
+                [img.convert("RGB"), "Analyse this image and return only the JSON object as specified."]
             )
         except Exception as exc:
             return AnalysisResult(
                 analyzer=self.name,
                 ai_percentage=50.0,
                 confidence=0.0,
-                indicators=[f"Claude API error: {exc}"],
-                heatmap=None,
+                indicators=[f"Gemini API error: {exc}"],
             )
 
-        raw_text = ""
-        for block in response.content:
-            if block.type == "text":
-                raw_text = block.text
-                break
+        raw_text = response.text or ""
 
-        # Extract JSON even if Claude added surrounding text
         json_match = re.search(r"\{.*\}", raw_text, re.DOTALL)
         if not json_match:
             return AnalysisResult(
                 analyzer=self.name,
                 ai_percentage=50.0,
                 confidence=0.0,
-                indicators=["Claude returned non-JSON response"],
-                heatmap=None,
+                indicators=["Gemini returned non-JSON response"],
             )
 
         try:
@@ -142,8 +119,7 @@ class ClaudeAnalyzer(BaseAnalyzer):
                 analyzer=self.name,
                 ai_percentage=50.0,
                 confidence=0.0,
-                indicators=["Failed to parse Claude JSON response"],
-                heatmap=None,
+                indicators=["Failed to parse Gemini JSON response"],
             )
 
         ai_percentage = float(np.clip(data.get("ai_percentage", 50.0), 0, 100))

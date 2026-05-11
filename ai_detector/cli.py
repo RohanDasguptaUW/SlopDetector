@@ -50,15 +50,15 @@ def _collect_images(paths: tuple[str, ...]) -> list[str]:
 
 def _analyse_image(
     image_path: str,
-    use_claude: bool,
+    use_gemini: bool,
     model: str,
 ) -> tuple[list[AnalysisResult], dict]:
     results: list[AnalysisResult] = []
 
     analyzers = [ELAAnalyzer(), SpectralAnalyzer(), MetadataAnalyzer(), NoiseAnalyzer()]
-    if use_claude:
-        from .analyzers.claude import ClaudeAnalyzer
-        analyzers.append(ClaudeAnalyzer(model=model))
+    if use_gemini:
+        from .analyzers.gemini import GeminiAnalyzer
+        analyzers.append(GeminiAnalyzer(model=model))
 
     for analyzer in analyzers:
         try:
@@ -116,15 +116,15 @@ def _print_results_table(image_path: str, results: list[AnalysisResult], summary
 
 @click.command("ai-detect")
 @click.argument("images", nargs=-1, required=True, metavar="IMAGE [IMAGE ...]")
-@click.option("--no-claude", is_flag=True, default=False, help="Skip Claude AI analyzer.")
+@click.option("--no-gemini", is_flag=True, default=False, help="Skip Gemini AI analyzer.")
 @click.option("--heatmap", is_flag=True, default=False, help="Generate heatmap overlay PNG.")
 @click.option("--report", is_flag=True, default=False, help="Generate self-contained HTML report.")
 @click.option("--output", "-o", default=None, metavar="DIR", help="Output directory for generated files.")
 @click.option("--json-out", is_flag=True, default=False, help="Print JSON summary to stdout.")
-@click.option("--model", default="claude-sonnet-4-6", show_default=True, help="Claude model to use.")
+@click.option("--model", default="gemini-2.5-flash", show_default=True, help="Gemini model to use.")
 def main(
     images: tuple[str, ...],
-    no_claude: bool,
+    no_gemini: bool,
     heatmap: bool,
     report: bool,
     output: Optional[str],
@@ -141,9 +141,9 @@ def main(
 
       ai-detect *.png --heatmap --report -o results/
 
-      ai-detect images/ --no-claude --json-out
+      ai-detect images/ --no-gemini --json-out
     """
-    use_claude = not no_claude
+    use_gemini = not no_gemini
     image_list = _collect_images(images)
 
     if not image_list:
@@ -158,7 +158,7 @@ def main(
     for img_path in image_list:
         console.rule(f"[bold blue]Analysing: {img_path}")
         try:
-            results, summary = _analyse_image(img_path, use_claude, model)
+            results, summary = _analyse_image(img_path, use_gemini, model)
         except Exception as exc:
             console.print(f"[red]Error processing {img_path}: {exc}[/red]")
             continue
