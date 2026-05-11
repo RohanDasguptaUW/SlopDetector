@@ -1,6 +1,5 @@
 """Gemini AI analyzer — single API call with 3×3 grid scores."""
 
-import base64
 import io
 import json
 import os
@@ -56,13 +55,14 @@ class GeminiAnalyzer(BaseAnalyzer):
 
     def analyze(self, image_path: str) -> AnalysisResult:
         try:
-            import google.generativeai as genai  # type: ignore[import]
+            from google import genai  # type: ignore[import]
+            from google.genai import types  # type: ignore[import]
         except ImportError:
             return AnalysisResult(
                 analyzer=self.name,
                 ai_percentage=50.0,
                 confidence=0.0,
-                indicators=["google-generativeai package not installed — Gemini analysis skipped"],
+                indicators=["google-genai package not installed — Gemini analysis skipped"],
             )
 
         api_key = os.environ.get("GOOGLE_API_KEY", "")
@@ -83,15 +83,19 @@ class GeminiAnalyzer(BaseAnalyzer):
             scale = (max_pixels / (H * W)) ** 0.5
             img = img.resize((int(W * scale), int(H * scale)), Image.LANCZOS)
 
-        genai.configure(api_key=api_key)
-        gemini_model = genai.GenerativeModel(
-            model_name=self.model,
-            system_instruction=_SYSTEM_PROMPT,
-        )
+        buf = io.BytesIO()
+        img.convert("RGB").save(buf, format="JPEG", quality=85)
+        image_part = types.Part.from_bytes(data=buf.getvalue(), mime_type="image/jpeg")
+
+        client = genai.Client(api_key=api_key)
 
         try:
-            response = gemini_model.generate_content(
-                [img.convert("RGB"), "Analyse this image and return only the JSON object as specified."]
+            response = client.models.generate_content(
+                model=self.model,
+                contents=[image_part, "Analyse this image and return only the JSON object as specified."],
+                config=types.GenerateContentConfig(
+                    system_instruction=_SYSTEM_PROMPT,
+                ),
             )
         except Exception as exc:
             return AnalysisResult(
