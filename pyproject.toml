@@ -22,6 +22,11 @@ dependencies = [
 c2pa = [
     "c2pa-python>=0.5",
 ]
+train = [
+    "torch>=2.0",
+    "torchvision>=0.15",
+    "datasets>=2.14",
+]
 dev = [
     "pytest>=7.0",
     "pytest-mock>=3.0",
