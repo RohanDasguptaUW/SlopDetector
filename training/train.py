@@ -34,8 +34,6 @@ PHASE1_EPOCHS = 5
 PHASE2_EPOCHS = 5
 PHASE1_LR = 1e-4
 PHASE2_LR = 1e-5
-VAL_SPLIT = 0.2
-SEED = 42
 
 # ── Transforms ────────────────────────────────────────────────────────────────
 
@@ -72,14 +70,14 @@ class CocoAIDataset(Dataset):
     def __getitem__(self, idx):
         sample = self.data[idx]
 
-        img = sample["image"]
+        img = sample["Image"]
         if isinstance(img, str):
             img = Image.open(img)
         if not isinstance(img, Image.Image):
             img = Image.fromarray(img)
         img = img.convert("RGB")
 
-        label = int(sample["label"])
+        label = int(sample["Label_A"])
         return self.transform(img), label
 
 
@@ -144,15 +142,8 @@ def main():
     print(f"Loading dataset from {DATASET_PATH} ...")
     hf_ds = load_from_disk(str(DATASET_PATH))
 
-    # Handle DatasetDict (e.g. already has a 'train' split)
-    if hasattr(hf_ds, "keys"):
-        if "train" in hf_ds:
-            hf_ds = hf_ds["train"]
-        else:
-            hf_ds = hf_ds[list(hf_ds.keys())[0]]
-
-    split = hf_ds.train_test_split(test_size=VAL_SPLIT, seed=SEED)
-    train_hf, val_hf = split["train"], split["test"]
+    train_hf = hf_ds["train"]
+    val_hf = hf_ds["validation"]
     print(f"Train: {len(train_hf):,}  Val: {len(val_hf):,}")
 
     train_ds = CocoAIDataset(train_hf, train_transform)
