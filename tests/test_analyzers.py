@@ -286,7 +286,7 @@ class TestEnsemble:
         for key in ("ai_percentage", "confidence", "verdict", "weights_used", "per_analyzer"):
             assert key in summary
 
-    def test_runs_without_claude(self, tmp_path):
+    def test_runs_without_gemini(self, tmp_path):
         """Full pipeline should work using only local analyzers."""
         img = _rgb_image()
         jpeg_path = _save_tmp_image(tmp_path, img)
@@ -311,13 +311,13 @@ class TestEnsemble:
 
     def test_weighted_average(self):
         """Weighted average should pull toward higher-weight analyzer."""
-        # claude=0.50 weight, ela=0.25 — with only these two, claude dominates
+        # gemini=0.1575 weight, ela=0.07 — with only these two, gemini dominates
         hm = np.full((32, 32), 0.5, dtype=np.float32)
-        claude_result = _result("claude", 90.0, 0.9, hm)
+        gemini_result = _result("gemini", 90.0, 0.9, hm)
         ela_result = _result("ela", 10.0, 0.8, hm)
-        summary = ensemble.combine([claude_result, ela_result])
-        # Claude weight 0.50, ELA weight 0.25 → normalised 2:1 ratio
-        # Expected ≈ (90*2 + 10*1) / 3 = 63.33
+        summary = ensemble.combine([gemini_result, ela_result])
+        # gemini weight 0.1575, ela weight 0.07 → normalised ~2.25:1 ratio
+        # Expected ≈ (90*2.25 + 10*1) / 3.25 ≈ 65.4
         assert summary["ai_percentage"] > 50.0
 
     def test_heatmap_combined(self):
