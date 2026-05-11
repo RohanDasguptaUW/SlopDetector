@@ -286,7 +286,7 @@ class TestEnsemble:
         for key in ("ai_percentage", "confidence", "verdict", "weights_used", "per_analyzer"):
             assert key in summary
 
-    def test_runs_without_gemini(self, tmp_path):
+    def test_runs_with_local_analyzers(self, tmp_path):
         """Full pipeline should work using only local analyzers."""
         img = _rgb_image()
         jpeg_path = _save_tmp_image(tmp_path, img)
@@ -311,14 +311,13 @@ class TestEnsemble:
 
     def test_weighted_average(self):
         """Weighted average should pull toward higher-weight analyzer."""
-        # gemini=0.1575 weight, ela=0.07 — with only these two, gemini dominates
+        # noise weight 0.30, spectral weight 0.15 → normalised 2:1 ratio
+        # Expected ≈ (90*0.30 + 10*0.15) / 0.45 ≈ 63.3 — noise dominates
         hm = np.full((32, 32), 0.5, dtype=np.float32)
-        gemini_result = _result("gemini", 90.0, 0.9, hm)
-        ela_result = _result("ela", 10.0, 0.8, hm)
-        summary = ensemble.combine([gemini_result, ela_result])
-        # gemini weight 0.20, ela weight 0.35 → normalised 4:7 ratio
-        # Expected ≈ (90*0.20 + 10*0.35) / 0.55 ≈ 39.1 — ela dominates
-        assert summary["ai_percentage"] < 50.0
+        noise_result = _result("noise", 90.0, 0.9, hm)
+        spectral_result = _result("spectral", 10.0, 0.8, hm)
+        summary = ensemble.combine([noise_result, spectral_result])
+        assert summary["ai_percentage"] > 50.0
 
     def test_heatmap_combined(self):
         hm1 = np.ones((32, 32), dtype=np.float32)
