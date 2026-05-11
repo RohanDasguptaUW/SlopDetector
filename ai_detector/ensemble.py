@@ -6,15 +6,11 @@ from typing import Optional
 from .analyzers.base import AnalysisResult
 
 _DEFAULT_WEIGHTS: dict[str, float] = {
-    # Provenance / external signals (0.65 combined)
-    "c2pa": 0.35,   # cryptographic Content Credentials — highest trust when present
-    "hive": 0.30,   # Hive AI classifier
-    # Local signals scaled to fill remaining 0.35 (original weights × 0.35)
-    "gemini": 0.1575,
-    "ela": 0.0700,
-    "noise": 0.0525,
-    "spectral": 0.0455,
-    "metadata": 0.0245,
+    "ela": 0.35,
+    "noise": 0.25,
+    "gemini": 0.20,
+    "metadata": 0.15,
+    "spectral": 0.05,
 }
 
 

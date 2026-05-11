@@ -316,9 +316,9 @@ class TestEnsemble:
         gemini_result = _result("gemini", 90.0, 0.9, hm)
         ela_result = _result("ela", 10.0, 0.8, hm)
         summary = ensemble.combine([gemini_result, ela_result])
-        # gemini weight 0.1575, ela weight 0.07 → normalised ~2.25:1 ratio
-        # Expected ≈ (90*2.25 + 10*1) / 3.25 ≈ 65.4
-        assert summary["ai_percentage"] > 50.0
+        # gemini weight 0.20, ela weight 0.35 → normalised 4:7 ratio
+        # Expected ≈ (90*0.20 + 10*0.35) / 0.55 ≈ 39.1 — ela dominates
+        assert summary["ai_percentage"] < 50.0
 
     def test_heatmap_combined(self):
         hm1 = np.ones((32, 32), dtype=np.float32)
