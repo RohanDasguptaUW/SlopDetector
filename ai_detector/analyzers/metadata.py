@@ -34,6 +34,21 @@ def _get_exif_tag(exif_data: dict, tag_name: str):
     return exif_data.get(tag_id)
 
 
+def has_camera_exif(image_path: str) -> bool:
+    """Return True if the image has a camera Make or Model EXIF tag."""
+    try:
+        img = Image.open(image_path)
+        raw = img._getexif()  # type: ignore[attr-defined]
+        if not raw:
+            return False
+        exif_data = raw
+    except Exception:
+        return False
+    make = _get_exif_tag(exif_data, "Make")
+    model_tag = _get_exif_tag(exif_data, "Model")
+    return bool(make or model_tag)
+
+
 class MetadataAnalyzer(BaseAnalyzer):
     name = "metadata"
 

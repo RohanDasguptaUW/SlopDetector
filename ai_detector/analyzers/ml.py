@@ -7,6 +7,7 @@ import numpy as np
 from PIL import Image
 
 from .base import AnalysisResult, BaseAnalyzer
+from .metadata import has_camera_exif
 
 _DEFAULT_MODEL_PATH = Path(__file__).parents[2] / "training" / "best_model.pt"
 
@@ -64,6 +65,14 @@ class MLAnalyzer(BaseAnalyzer):
         ai_percentage = round(ai_prob * 100, 2)
         confidence = round(min(0.95, 0.5 + abs(ai_prob - 0.5) * 1.8), 3)
 
+        # Camera EXIF calibration: real cameras always embed Make/Model; cap score
+        # at 40% to suppress false positives on professional photography.
+        capped = False
+        if ai_percentage > 40.0 and has_camera_exif(image_path):
+            ai_percentage = 40.0
+            confidence = round(confidence * 0.7, 3)
+            capped = True
+
         if ai_prob >= 0.7:
             indicator = f"ResNet50 classifier: {ai_percentage:.1f}% AI (p={ai_prob:.3f})"
         elif ai_prob <= 0.3:
@@ -71,9 +80,13 @@ class MLAnalyzer(BaseAnalyzer):
         else:
             indicator = f"ResNet50 classifier: {ai_percentage:.1f}% AI — ambiguous (p={ai_prob:.3f})"
 
+        indicators = [indicator]
+        if capped:
+            indicators.append("Camera Make/Model EXIF present — score capped at 40%")
+
         return AnalysisResult(
             analyzer=self.name,
             ai_percentage=ai_percentage,
             confidence=confidence,
-            indicators=[indicator],
+            indicators=indicators,
         )
