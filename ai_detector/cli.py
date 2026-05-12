@@ -51,7 +51,8 @@ def _collect_images(paths: tuple[str, ...]) -> list[str]:
 def _analyse_image(image_path: str) -> tuple[list[AnalysisResult], dict]:
     results: list[AnalysisResult] = []
 
-    analyzers = [ELAAnalyzer(), SpectralAnalyzer(), MetadataAnalyzer(), NoiseAnalyzer()]
+    from .analyzers.ml import MLAnalyzer
+    analyzers = [ELAAnalyzer(), SpectralAnalyzer(), MetadataAnalyzer(), NoiseAnalyzer(), MLAnalyzer()]
 
     for analyzer in analyzers:
         try:
