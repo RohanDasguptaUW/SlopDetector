@@ -24,8 +24,8 @@ from datasets import (
 )
 from PIL import Image as PILImage
 
-DATASET_IN = Path.home() / "datasets" / "ms_cocoai"
-DATASET_OUT = Path.home() / "datasets" / "ms_cocoai_augmented"
+DATASET_IN = Path(__file__).parents[1] / "datasets" / "ms_cocoai"
+DATASET_OUT = Path(__file__).parents[1] / "datasets" / "ms_cocoai_augmented"
 PHOTOS_DIR = Path(__file__).parent / "real_photos"
 
 
