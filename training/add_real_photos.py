@@ -27,23 +27,12 @@ from PIL import Image as PILImage
 DATASET_IN = Path(__file__).parents[1] / "datasets" / "ms_cocoai"
 DATASET_OUT = Path(__file__).parents[1] / "datasets" / "ms_cocoai_augmented"
 PHOTOS_DIR = Path(__file__).parent / "real_photos"
+BATCH_SIZE = 100
 
 
-def load_real_photos(features) -> Dataset:
-    """
-    Build a Dataset from training/real_photos/*.jpg matching `features`.
-    Image → PIL image loaded from disk.
-    Label_A → 0 (real).
-    All other columns → None.
-    """
-    jpg_paths = sorted(PHOTOS_DIR.glob("*.jpg"))
-    if not jpg_paths:
-        sys.exit(f"Error: no .jpg files found in {PHOTOS_DIR}")
-
-    print(f"Found {len(jpg_paths)} photos in {PHOTOS_DIR}")
-
+def _make_batch_dataset(paths: list[Path], features) -> Dataset:
     rows: dict[str, list] = {col: [] for col in features}
-    for path in jpg_paths:
+    for path in paths:
         img = PILImage.open(path).convert("RGB")
         for col in features:
             if col == "Image":
@@ -52,10 +41,32 @@ def load_real_photos(features) -> Dataset:
                 rows[col].append(0)
             else:
                 rows[col].append(None)
+    return Dataset.from_dict(rows, features=features)
 
-    # Build with same features as original so concatenate_datasets won't complain
-    new_ds = Dataset.from_dict(rows, features=features)
-    return new_ds
+
+def load_real_photos(features) -> Dataset:
+    """
+    Build a Dataset from training/real_photos/*.jpg matching `features`.
+    Images are processed in batches of BATCH_SIZE to limit peak memory use.
+    Label_A → 0 (real). All other columns → None.
+    """
+    jpg_paths = sorted(PHOTOS_DIR.glob("*.jpg"))
+    if not jpg_paths:
+        sys.exit(f"Error: no .jpg files found in {PHOTOS_DIR}")
+
+    total = len(jpg_paths)
+    num_batches = -(-total // BATCH_SIZE)  # ceiling division
+    print(f"Found {total} photos — processing in {num_batches} batches of {BATCH_SIZE}")
+
+    batch_datasets: list[Dataset] = []
+    for i in range(0, total, BATCH_SIZE):
+        batch = jpg_paths[i:i + BATCH_SIZE]
+        batch_ds = _make_batch_dataset(batch, features)
+        batch_datasets.append(batch_ds)
+        done = min(i + BATCH_SIZE, total)
+        print(f"  batch {len(batch_datasets)}/{num_batches}: loaded {done}/{total}")
+
+    return concatenate_datasets(batch_datasets)
 
 
 def main() -> None:

@@ -29,7 +29,7 @@ CHECKPOINT_PATH = Path(__file__).parent / "best_model.pt"
 # ── Hyper-parameters ──────────────────────────────────────────────────────────
 
 BATCH_SIZE = 32
-NUM_WORKERS = min(4, os.cpu_count() or 1)
+NUM_WORKERS = 0
 PHASE1_EPOCHS = 5
 PHASE2_EPOCHS = 5
 PHASE1_LR = 1e-4
