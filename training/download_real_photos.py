@@ -1,35 +1,31 @@
-"""Download 2000 real photographs from Unsplash with intact EXIF data.
+"""Download 2000 real photographs from the Pexels API.
 
-Saves to training/real_photos/ as JPEGs named <category>_<photo_id>.jpg.
-Requires UNSPLASH_ACCESS_KEY environment variable.
+Saves to training/real_photos/<category>_<photo_id>.jpg.
+Requires PEXELS_API_KEY environment variable.
 
-NOTE on rate limits:
-    Demo apps:        50  requests / hour  (~40 h for 2000 photos)
-    Production apps:  5000 requests / hour (~25 min for 2000 photos)
-    Apply for production access at https://unsplash.com/developers
+Rate limits: 200 requests/hour, 20 000 requests/month.
+At 200 req/hr this completes in well under an hour.
 
 Usage:
-    UNSPLASH_ACCESS_KEY=<key> python training/download_real_photos.py
+    PEXELS_API_KEY=<key> python training/download_real_photos.py
 """
 
 import os
 import sys
 import time
-import hashlib
 from pathlib import Path
 
 import requests
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-API_BASE = "https://api.unsplash.com"
+API_BASE = "https://api.pexels.com/v1"
 OUT_DIR = Path(__file__).parent / "real_photos"
-PER_PAGE = 30           # Unsplash max per search page
-INTER_REQUEST_DELAY = 0.5   # seconds between API calls — be polite
-DOWNLOAD_TIMEOUT = 30       # seconds for image download
+PER_PAGE = 80           # Pexels maximum
+INTER_REQUEST_DELAY = 0.5   # seconds between API calls
+DOWNLOAD_TIMEOUT = 30
 MAX_RETRIES = 5
 
-# 2000 photos split evenly across 5 subjects
 CATEGORIES: dict[str, int] = {
     "portrait": 400,
     "landscape": 400,
@@ -49,7 +45,6 @@ def _retry_get(
     url: str,
     *,
     params: dict | None = None,
-    headers: dict | None = None,
     stream: bool = False,
     timeout: int = 15,
 ) -> requests.Response:
@@ -57,8 +52,7 @@ def _retry_get(
     delay = 2.0
     for attempt in range(1, MAX_RETRIES + 1):
         try:
-            resp = session.get(url, params=params, headers=headers,
-                               stream=stream, timeout=timeout)
+            resp = session.get(url, params=params, stream=stream, timeout=timeout)
         except requests.exceptions.RequestException as exc:
             if attempt == MAX_RETRIES:
                 raise
@@ -68,7 +62,8 @@ def _retry_get(
             continue
 
         if resp.status_code == 429:
-            wait = int(resp.headers.get("X-Ratelimit-Reset", delay + 60))
+            reset = int(resp.headers.get("X-Ratelimit-Reset", time.time() + 60))
+            wait = max(1, reset - int(time.time()))
             print(f"    [rate limited] waiting {wait}s …")
             time.sleep(wait)
             continue
@@ -88,51 +83,33 @@ def _retry_get(
 
 def search_photos(
     session: requests.Session,
-    headers: dict,
     query: str,
     page: int,
-) -> list[dict]:
+) -> tuple[list[dict], int]:
+    """Returns (photos, total_results)."""
     resp = _retry_get(
-        session, f"{API_BASE}/search/photos",
+        session,
+        f"{API_BASE}/search",
         params={
             "query": query,
             "per_page": PER_PAGE,
             "page": page,
-            "orientation": "squarish",
-            "content_filter": "high",
+            "size": "large",
         },
-        headers=headers,
     )
     resp.raise_for_status()
     time.sleep(INTER_REQUEST_DELAY)
-    return resp.json().get("results", [])
-
-
-def trigger_download(
-    session: requests.Session,
-    headers: dict,
-    photo_id: str,
-) -> None:
-    """
-    Required by Unsplash API guidelines whenever an image is downloaded.
-    https://help.unsplash.com/en/articles/2511258-guideline-triggering-a-download
-    """
-    try:
-        _retry_get(session, f"{API_BASE}/photos/{photo_id}/download",
-                   headers=headers)
-        time.sleep(INTER_REQUEST_DELAY)
-    except Exception:
-        pass  # non-fatal — best effort
+    data = resp.json()
+    return data.get("photos", []), data.get("total_results", 0)
 
 
 def download_image(
     session: requests.Session,
-    raw_url: str,
+    photo: dict,
     dest: Path,
 ) -> bool:
-    """Download raw Unsplash URL as JPEG. Returns True on success."""
-    # ?fm=jpg preserves EXIF; q=90 keeps quality high
-    url = raw_url.split("?")[0] + "?fm=jpg&q=90&fit=max&w=2000"
+    """Download the original-resolution photo. Returns True on success."""
+    url = photo["src"]["original"]
     try:
         resp = _retry_get(session, url, stream=True, timeout=DOWNLOAD_TIMEOUT)
         resp.raise_for_status()
@@ -150,17 +127,18 @@ def download_image(
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main() -> None:
-    access_key = os.environ.get("UNSPLASH_ACCESS_KEY", "")
-    if not access_key:
-        sys.exit("Error: UNSPLASH_ACCESS_KEY environment variable not set.")
+    api_key = os.environ.get("PEXELS_API_KEY", "")
+    if not api_key:
+        sys.exit("Error: PEXELS_API_KEY environment variable not set.")
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    headers = {"Authorization": f"Client-ID {access_key}"}
     session = requests.Session()
-    session.headers.update({"Accept-Version": "v1"})
+    session.headers.update({
+        "Authorization": api_key,
+    })
 
-    # Track seen IDs globally to avoid cross-category duplicates
+    # Resume: collect IDs already on disk
     seen_ids: set[str] = {p.stem.split("_", 1)[-1] for p in OUT_DIR.glob("*.jpg")}
     total_saved = len(seen_ids)
     total_target = sum(CATEGORIES.values())
@@ -172,7 +150,7 @@ def main() -> None:
 
     for category, target in CATEGORIES.items():
         slug = _safe_slug(category)
-        existing = sum(1 for p in OUT_DIR.glob(f"{slug}_*.jpg"))
+        existing = sum(1 for _ in OUT_DIR.glob(f"{slug}_*.jpg"))
         needed = target - existing
         if needed <= 0:
             print(f"[{category}] already complete ({existing}/{target}), skipping.")
@@ -183,41 +161,37 @@ def main() -> None:
         page = 1
 
         while saved < needed:
-            photos = search_photos(session, headers, category, page)
+            photos, total_results = search_photos(session, category, page)
             if not photos:
-                print(f"  [!] no more results at page {page}, stopping.")
+                print(f"  [!] no more results at page {page} (total={total_results}), stopping.")
                 break
 
             for photo in photos:
                 if saved >= needed:
                     break
 
-                photo_id = photo["id"]
+                photo_id = str(photo["id"])
                 if photo_id in seen_ids:
                     continue
 
-                # Skip photos without EXIF camera data (per photo metadata)
-                exif = photo.get("exif") or {}
-                if not exif.get("make") and not exif.get("model"):
-                    continue
-
                 dest = OUT_DIR / f"{slug}_{photo_id}.jpg"
-                raw_url = photo["urls"]["raw"]
-
-                trigger_download(session, headers, photo_id)
-                ok = download_image(session, raw_url, dest)
+                photographer = photo.get("photographer", "unknown")
+                ok = download_image(session, photo, dest)
 
                 if ok:
                     seen_ids.add(photo_id)
                     saved += 1
                     total_saved += 1
                     pct = total_saved / total_target * 100
-                    camera = f"{exif.get('make', '')} {exif.get('model', '')}".strip()
                     print(
                         f"  [{total_saved:4d}/{total_target}] {pct:5.1f}%  "
-                        f"{slug}_{photo_id}.jpg  ({camera})"
+                        f"{dest.name}  (by {photographer})"
                     )
 
+            max_page = -(-total_results // PER_PAGE)  # ceiling division
+            if page >= max_page:
+                print(f"  [!] exhausted all {total_results} results for '{category}'.")
+                break
             page += 1
 
         print(f"  → {slug}: saved {saved} new photos.\n")
