@@ -10,13 +10,15 @@ Training schedule:
 Best validation-accuracy checkpoint saved to training/best_model.pt.
 """
 
+import csv
 import os
+import sys
 from pathlib import Path
 
 import torch
 import torch.nn as nn
 from torch.optim import Adam
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import ConcatDataset, DataLoader, Dataset
 from torchvision import models, transforms
 from datasets import load_from_disk
 from PIL import Image
@@ -81,6 +83,25 @@ class CocoAIDataset(Dataset):
         return self.transform(img), label
 
 
+class CSVDataset(Dataset):
+    """Dataset backed by a CSV with 'filepath' and 'Label_A' columns."""
+
+    def __init__(self, csv_path: str, transform):
+        self.transform = transform
+        self.rows: list[tuple[str, int]] = []
+        with open(csv_path, newline="") as f:
+            for row in csv.DictReader(f):
+                self.rows.append((row["filepath"], int(row["Label_A"])))
+
+    def __len__(self) -> int:
+        return len(self.rows)
+
+    def __getitem__(self, idx: int):
+        filepath, label = self.rows[idx]
+        img = Image.open(filepath).convert("RGB")
+        return self.transform(img), label
+
+
 # ── Model ─────────────────────────────────────────────────────────────────────
 
 def build_model() -> nn.Module:
@@ -138,16 +159,24 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
 
-    # Load and split dataset
+    real_photos_csv = os.environ.get("REAL_PHOTOS_CSV", "")
+    csv_mode = bool(real_photos_csv)
+
+    # Load ms_cocoai
     print(f"Loading dataset from {DATASET_PATH} ...")
     hf_ds = load_from_disk(str(DATASET_PATH))
-
     train_hf = hf_ds["train"]
     val_hf = hf_ds["validation"]
     print(f"Train: {len(train_hf):,}  Val: {len(val_hf):,}")
 
-    train_ds = CocoAIDataset(train_hf, train_transform)
+    train_ds: Dataset = CocoAIDataset(train_hf, train_transform)
     val_ds = CocoAIDataset(val_hf, val_transform)
+
+    if csv_mode:
+        csv_ds = CSVDataset(real_photos_csv, train_transform)
+        print(f"CSV dataset: {len(csv_ds):,} rows from {real_photos_csv}")
+        train_ds = ConcatDataset([train_ds, csv_ds])
+        print(f"Combined train: {len(train_ds):,}")
 
     train_loader = DataLoader(
         train_ds, batch_size=BATCH_SIZE, shuffle=True,
@@ -159,17 +188,27 @@ def main():
     )
 
     model = build_model().to(device)
-    criterion = nn.CrossEntropyLoss()
 
+    if csv_mode:
+        slop_model_path = Path(os.environ.get("SLOP_MODEL_PATH", CHECKPOINT_PATH))
+        if not slop_model_path.exists():
+            sys.exit(f"Error: model weights not found at {slop_model_path}")
+        model.load_state_dict(torch.load(slop_model_path, map_location=device))
+        print(f"Loaded weights from {slop_model_path}")
+        phases = [("full", PHASE2_EPOCHS, PHASE2_LR, False)]
+    else:
+        phases = [
+            ("frozen", PHASE1_EPOCHS, PHASE1_LR, True),
+            ("full",   PHASE2_EPOCHS, PHASE2_LR, False),
+        ]
+
+    criterion = nn.CrossEntropyLoss()
     best_val_acc = 0.0
     header = f"{'Epoch':>6}  {'Phase':<8}  {'Train Loss':>10}  {'Train Acc':>9}  {'Val Loss':>8}  {'Val Acc':>7}  {'Best':>5}"
     print("\n" + header)
     print("-" * len(header))
 
-    for phase, epochs, lr, frozen in [
-        ("frozen", PHASE1_EPOCHS, PHASE1_LR, True),
-        ("full",   PHASE2_EPOCHS, PHASE2_LR, False),
-    ]:
+    for phase, epochs, lr, frozen in phases:
         set_frozen(model, frozen)
         trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
         print(f"\n[{phase}]  lr={lr}  trainable params={trainable:,}")
