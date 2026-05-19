@@ -27,11 +27,16 @@ DOWNLOAD_TIMEOUT = 30
 MAX_RETRIES = 5
 
 CATEGORIES: dict[str, int] = {
-    "portrait": 400,
-    "landscape": 400,
-    "street photography": 400,
-    "events": 400,
-    "sports": 400,
+    "landscape": 200,
+    "architecture": 200,
+    "street": 200,
+    "food": 200,
+    "nature": 200,
+    "sports": 200,
+    "travel": 200,
+    "animals": 200,
+    "events": 200,
+    "candid": 200,
 }
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
