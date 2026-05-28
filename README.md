@@ -1,3 +1,16 @@
+---
+title: SlopDetector
+emoji: 🔍
+colorFrom: purple
+colorTo: red
+sdk: gradio
+sdk_version: "6.15.1"
+app_file: app/gradio_app.py
+pinned: false
+license: mit
+short_description: Detect AI-generated images using forensic analysis
+---
+
 # SlopDetector
 
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
