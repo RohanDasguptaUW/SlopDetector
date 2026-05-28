@@ -27,6 +27,9 @@ train = [
     "torchvision>=0.15",
     "datasets>=2.14",
 ]
+app = [
+    "gradio>=4.0",
+]
 dev = [
     "pytest>=7.0",
     "pytest-mock>=3.0",
