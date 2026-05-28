@@ -120,6 +120,14 @@ with gr.Blocks(
 ) as demo:
     gr.Markdown("# 🔍 SlopDetector\nUpload an image to estimate how likely it is to be AI-generated.")
 
+    gr.HTML("""
+<div style="background:#7c3a00;border:1px solid #e67e22;border-radius:8px;padding:12px 16px;
+            font-family:system-ui,sans-serif;font-size:14px;color:#fde8c8;margin-bottom:8px;">
+  ⚠️ <strong>Work in progress</strong> — accuracy varies by generator.
+  Best results on DALL-E, Midjourney, and Stable Diffusion outputs.
+  GPT-Image-2 detection is a known limitation under active development.
+</div>""")
+
     with gr.Row():
         with gr.Column(scale=1):
             img_input = gr.Image(type="filepath", label="Input image")
