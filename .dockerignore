@@ -1,0 +1,15 @@
+.git/
+.pytest_cache/
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.env
+.venv/
+venv/
+
+# Large training artefacts not needed at runtime
+datasets/
+training/real_photos/
+slopdetector_output/

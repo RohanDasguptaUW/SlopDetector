@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: slopdetector
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    envVars:
+      - key: SLOP_MODEL_PATH
+        value: training/best_model.pt
