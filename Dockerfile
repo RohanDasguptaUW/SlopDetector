@@ -21,4 +21,4 @@ COPY . .
 
 EXPOSE 7860
 
-CMD ["python", "app/main.py"]
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-7860}"]

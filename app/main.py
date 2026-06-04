@@ -20,10 +20,9 @@ from ai_detector.analyzers.noise import NoiseAnalyzer
 from ai_detector.analyzers.ml import MLAnalyzer
 
 _ANALYZERS = [ELAAnalyzer(), SpectralAnalyzer(), MetadataAnalyzer(), NoiseAnalyzer(), MLAnalyzer()]
-
 _STATIC = Path(__file__).parent / "static"
 
-app = FastAPI(title="SlopDetector")
+app = FastAPI(title="SlopDetector", docs_url=None, redoc_url=None)
 
 
 @app.get("/")
@@ -33,17 +32,17 @@ async def index():
 
 @app.post("/analyse")
 async def analyse(image: UploadFile = File(...)):
-    suffix = Path(image.filename or "upload.jpg").suffix or ".jpg"
+    suffix = Path(image.filename or "img.jpg").suffix or ".jpg"
 
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
         tmp.write(await image.read())
-        image_path = tmp.name
+        img_path = tmp.name
 
     try:
         results = []
         for analyzer in _ANALYZERS:
             try:
-                results.append(analyzer.analyze(image_path))
+                results.append(analyzer.analyze(img_path))
             except Exception:
                 pass
 
@@ -58,7 +57,7 @@ async def analyse(image: UploadFile = File(...)):
             with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as hm:
                 hm_path = hm.name
             try:
-                heatmap_mod.generate(image_path, summary["heatmap"], summary["ai_percentage"], hm_path)
+                heatmap_mod.generate(img_path, summary["heatmap"], summary["ai_percentage"], hm_path)
                 with open(hm_path, "rb") as f:
                     heatmap_b64 = "data:image/png;base64," + base64.b64encode(f.read()).decode()
             finally:
@@ -69,23 +68,23 @@ async def analyse(image: UploadFile = File(...)):
 
         return {
             "ai_percentage": round(summary["ai_percentage"], 1),
-            "confidence": round(summary["confidence"], 3),
-            "verdict": summary["verdict"],
-            "heatmap_b64": heatmap_b64,
+            "confidence":    round(summary["confidence"], 3),
+            "verdict":       summary["verdict"],
+            "heatmap_b64":   heatmap_b64,
             "results": [
                 {
-                    "analyzer": r.analyzer,
+                    "analyzer":    r.analyzer,
                     "ai_percentage": round(r.ai_percentage, 1),
-                    "confidence": round(r.confidence, 3),
-                    "weight": round(weights.get(r.analyzer, 0), 3),
-                    "indicators": r.indicators,
+                    "confidence":  round(r.confidence, 3),
+                    "weight":      round(weights.get(r.analyzer, 0), 3),
+                    "indicators":  r.indicators,
                 }
                 for r in results
             ],
         }
     finally:
         try:
-            os.unlink(image_path)
+            os.unlink(img_path)
         except OSError:
             pass
 
