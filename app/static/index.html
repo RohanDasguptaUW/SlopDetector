@@ -1,0 +1,908 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SlopDetector — AI Image Forensics</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:         #09090b;
+      --surface:    #0f0f13;
+      --surface2:   #131318;
+      --border:     #1c1c22;
+      --border2:    #242430;
+      --text:       #fafafa;
+      --muted:      #52525b;
+      --dim:        #27272a;
+      --accent:     #8b5cf6;
+      --red:        #f87171;
+      --orange:     #fb923c;
+      --yellow:     #fbbf24;
+      --green:      #4ade80;
+      --r:          12px;
+      --r-sm:       8px;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, 'Inter', system-ui, sans-serif;
+      font-size: 14px;
+      line-height: 1.6;
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Subtle grid texture */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(139,92,246,.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(139,92,246,.04) 1px, transparent 1px);
+      background-size: 48px 48px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    #app {
+      position: relative;
+      z-index: 1;
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 0 24px 72px;
+    }
+
+    /* ── Header ─────────────────────────────── */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 26px 0 18px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 28px;
+    }
+
+    .logo { display: flex; align-items: center; gap: 11px; }
+
+    .logo-mark {
+      width: 36px; height: 36px;
+      border-radius: 9px;
+      background: linear-gradient(135deg, #8b5cf6, #4f46e5);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px;
+      box-shadow: 0 0 0 1px rgba(139,92,246,.3), 0 4px 18px rgba(139,92,246,.22);
+      flex-shrink: 0;
+    }
+
+    .logo-name {
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: -.3px;
+      color: var(--text);
+    }
+
+    .logo-sub {
+      font-size: 10px;
+      color: var(--muted);
+      letter-spacing: .05em;
+    }
+
+    .badge {
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--muted);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 3px 10px;
+      letter-spacing: .05em;
+    }
+
+    /* ── Warning ────────────────────────────── */
+    .warn {
+      background: #0e0800;
+      border: 1px solid #3d1f07;
+      border-radius: var(--r-sm);
+      padding: 9px 14px;
+      font-size: 12px;
+      color: #c2730a;
+      margin-bottom: 22px;
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      line-height: 1.5;
+    }
+    .warn strong { color: #f59e0b; }
+
+    /* ── Upload zone ────────────────────────── */
+    #upload-zone {
+      background: var(--surface);
+      border: 1.5px dashed var(--border2);
+      border-radius: var(--r);
+      padding: 56px 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color .15s, background .15s, box-shadow .15s;
+      user-select: none;
+    }
+
+    #upload-zone:hover, #upload-zone.over {
+      border-color: var(--accent);
+      background: #0d0b17;
+      box-shadow: inset 0 0 60px rgba(139,92,246,.05);
+    }
+
+    #file-input { display: none; }
+
+    .upload-icon {
+      width: 48px; height: 48px;
+      border-radius: 11px;
+      background: var(--surface2);
+      border: 1px solid var(--border2);
+      display: flex; align-items: center; justify-content: center;
+      margin: 0 auto 16px;
+    }
+
+    .upload-icon svg {
+      width: 22px; height: 22px;
+      stroke: var(--muted);
+      fill: none;
+      stroke-width: 1.5;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .upload-title { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+    .upload-sub   { font-size: 12px; color: var(--muted); }
+
+    /* ── Workspace ──────────────────────────── */
+    #workspace { display: none; }
+    #workspace.on { display: block; }
+
+    .main-grid {
+      display: grid;
+      grid-template-columns: 272px 1fr;
+      gap: 14px;
+      align-items: start;
+    }
+
+    @media (max-width: 700px) { .main-grid { grid-template-columns: 1fr; } }
+
+    /* ── Left: preview ──────────────────────── */
+    .preview-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      overflow: hidden;
+    }
+
+    #preview-img {
+      width: 100%;
+      display: block;
+      max-height: 300px;
+      object-fit: cover;
+      background: var(--surface2);
+    }
+
+    .preview-footer {
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      border-top: 1px solid var(--border);
+    }
+
+    /* ── Buttons ────────────────────────────── */
+    .btn {
+      display: block;
+      width: 100%;
+      padding: 10px;
+      border-radius: var(--r-sm);
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      cursor: pointer;
+      border: none;
+      transition: all .15s;
+      text-align: center;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #8b5cf6, #6d28d9);
+      color: #fff;
+      box-shadow: 0 4px 20px rgba(139,92,246,.35),
+                  inset 0 1px 0 rgba(255,255,255,.08);
+    }
+
+    .btn-primary:hover {
+      box-shadow: 0 6px 28px rgba(139,92,246,.55),
+                  inset 0 1px 0 rgba(255,255,255,.12);
+      transform: translateY(-1px);
+    }
+
+    .btn-primary:active { transform: none; }
+
+    .btn-primary:disabled {
+      opacity: .45;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid var(--border);
+    }
+
+    .btn-ghost:hover { border-color: var(--border2); color: var(--text); }
+
+    /* ── Right: results ─────────────────────── */
+    .results-col { display: flex; flex-direction: column; gap: 10px; }
+
+    /* Empty / loading */
+    .empty-state {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 48px 24px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      color: var(--dim);
+      font-size: 12px;
+      text-align: center;
+    }
+
+    .empty-state svg { stroke: var(--border2); }
+
+    .loading-state {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 36px 24px;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .spinner {
+      width: 16px; height: 16px;
+      border: 2px solid var(--border2);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin .65s linear infinite;
+      flex-shrink: 0;
+    }
+
+    /* ── Score card ─────────────────────────── */
+    .score-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 20px 22px;
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .gauge-wrap { flex-shrink: 0; }
+
+    .score-right { flex: 1; min-width: 0; }
+
+    .verdict {
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 9px;
+      line-height: 1.2;
+    }
+
+    .conf-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border-radius: 20px;
+      padding: 3px 11px;
+      margin-bottom: 10px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .conf-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+
+    .signal-count { font-size: 11px; color: var(--dim); }
+
+    /* ── Card ───────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 15px 18px;
+    }
+
+    .card-label {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 12px;
+    }
+
+    /* ── Analyzer rows ──────────────────────── */
+    .az-row {
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .az-row:first-child { padding-top: 0; }
+    .az-row:last-child  { border-bottom: none; padding-bottom: 0; }
+
+    .az-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 7px;
+    }
+
+    .az-name-grp { display: flex; align-items: center; gap: 7px; }
+
+    .az-dot {
+      width: 5px; height: 5px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .az-name {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: #a1a1aa;
+    }
+
+    .az-meta { display: flex; align-items: center; gap: 10px; }
+
+    .az-stat { font-size: 9px; color: var(--muted); }
+
+    .az-pct {
+      font-size: 15px;
+      font-weight: 800;
+      min-width: 36px;
+      text-align: right;
+    }
+
+    .bar-track {
+      height: 4px;
+      background: var(--border);
+      border-radius: 2px;
+      overflow: hidden;
+      margin-bottom: 6px;
+    }
+
+    .bar-fill {
+      height: 100%;
+      border-radius: 2px;
+    }
+
+    .az-signal {
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.4;
+      padding-left: 12px;
+    }
+
+    /* ── Indicator rows ─────────────────────── */
+    .ind-row {
+      display: flex;
+      gap: 9px;
+      padding: 7px 0;
+      border-bottom: 1px solid var(--border);
+      align-items: flex-start;
+    }
+
+    .ind-row:first-child { padding-top: 0; }
+    .ind-row:last-child  { border-bottom: none; padding-bottom: 0; }
+
+    .ind-dot {
+      width: 5px; height: 5px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      margin-top: 5px;
+    }
+
+    .ind-src {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      white-space: nowrap;
+      min-width: 52px;
+    }
+
+    .ind-txt { font-size: 11px; color: var(--muted); line-height: 1.5; }
+
+    /* ── Comparison ─────────────────────────── */
+    #comparison {
+      display: none;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-top: 4px;
+    }
+
+    #comparison.on { display: grid; }
+
+    @media (max-width: 560px) { #comparison { grid-template-columns: 1fr; } }
+
+    .cmp-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      overflow: hidden;
+    }
+
+    .cmp-label {
+      padding: 8px 14px;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .cmp-card img {
+      width: 100%;
+      display: block;
+      max-height: 300px;
+      object-fit: contain;
+      background: #07070e;
+    }
+
+    /* ── Footer ─────────────────────────────── */
+    footer {
+      margin-top: 52px;
+      padding-top: 22px;
+      border-top: 1px solid var(--border);
+    }
+
+    .footer-label {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 12px;
+    }
+
+    .how-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(158px, 1fr));
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+
+    .how-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r-sm);
+      padding: 11px 13px;
+    }
+
+    .how-name {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 5px;
+    }
+
+    .how-desc { font-size: 10.5px; color: var(--muted); line-height: 1.5; }
+
+    .footer-bottom {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .footer-copy { font-size: 11px; color: var(--dim); }
+
+    .footer-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11px;
+      color: var(--muted);
+      text-decoration: none;
+      transition: color .15s;
+    }
+
+    .footer-link:hover { color: var(--text); }
+
+    /* ── Utilities ──────────────────────────── */
+    .hide { display: none !important; }
+
+    @keyframes spin   { to { transform: rotate(360deg); } }
+    @keyframes pulse  { 0%,100%{opacity:1} 50%{opacity:.35} }
+    @keyframes fadeUp { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:none} }
+
+    .fade-up { animation: fadeUp .22s ease; }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <!-- Header -->
+  <header>
+    <div class="logo">
+      <div class="logo-mark">🔍</div>
+      <div>
+        <div class="logo-name">SlopDetector</div>
+        <div class="logo-sub">AI Image Forensics</div>
+      </div>
+    </div>
+    <span class="badge">BETA</span>
+  </header>
+
+  <!-- Warning -->
+  <div class="warn">
+    <span>⚠</span>
+    <span><strong>Work in progress</strong> — accuracy varies by generator. Best results on
+    DALL-E, Midjourney, and Stable Diffusion. GPT-Image-2 detection is a known limitation
+    under active development.</span>
+  </div>
+
+  <!-- Upload zone -->
+  <div id="upload-zone">
+    <input type="file" id="file-input" accept="image/*">
+    <div class="upload-icon">
+      <svg viewBox="0 0 24 24">
+        <path d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021
+                 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/>
+      </svg>
+    </div>
+    <div class="upload-title">Drop an image here</div>
+    <div class="upload-sub">or click to browse &nbsp;·&nbsp; JPEG &nbsp;PNG &nbsp;WebP &nbsp;TIFF</div>
+  </div>
+
+  <!-- Workspace -->
+  <div id="workspace">
+    <div class="main-grid">
+
+      <!-- Preview -->
+      <div>
+        <div class="preview-card">
+          <img id="preview-img" src="" alt="Preview">
+          <div class="preview-footer">
+            <button class="btn btn-primary" id="analyse-btn">Analyse Image</button>
+            <button class="btn btn-ghost"   id="change-btn">Change image</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Results column -->
+      <div class="results-col">
+
+        <!-- Empty -->
+        <div class="empty-state" id="empty-state">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke-width="1.5"
+               stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+          </svg>
+          <span>Click Analyse to inspect this image</span>
+        </div>
+
+        <!-- Loading -->
+        <div class="loading-state" id="loading-state">
+          <div class="spinner"></div>
+          Running forensic analysis…
+        </div>
+
+        <!-- Results -->
+        <div id="results" class="hide">
+          <div class="results-col">
+            <div class="score-card fade-up" id="score-card"></div>
+            <div class="card fade-up" id="breakdown-card">
+              <div class="card-label">Analyzer Breakdown</div>
+              <div id="breakdown-rows"></div>
+            </div>
+            <div class="card fade-up" id="indicators-card">
+              <div class="card-label">Forensic Indicators</div>
+              <div id="indicator-rows"></div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Side-by-side comparison (shown when heatmap available) -->
+    <div id="comparison">
+      <div class="cmp-card">
+        <div class="cmp-label">Original</div>
+        <img id="cmp-orig" src="" alt="Original image">
+      </div>
+      <div class="cmp-card">
+        <div class="cmp-label">Spatial Heatmap</div>
+        <img id="cmp-heat" src="" alt="Spatial heatmap">
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer>
+    <div class="footer-label">How It Works</div>
+    <div class="how-grid">
+      <div class="how-card">
+        <div class="how-name">ELA</div>
+        <div class="how-desc">Error Level Analysis detects compression artifacts inconsistent with a real photo's editing history.</div>
+      </div>
+      <div class="how-card">
+        <div class="how-name">Spectral</div>
+        <div class="how-desc">Frequency-domain analysis reveals unnatural spectral patterns left by generative models.</div>
+      </div>
+      <div class="how-card">
+        <div class="how-name">Metadata</div>
+        <div class="how-desc">EXIF and creation metadata differ between AI generators and cameras with real optics.</div>
+      </div>
+      <div class="how-card">
+        <div class="how-name">Noise</div>
+        <div class="how-desc">Pixel-level noise distribution — AI images exhibit unnaturally uniform or structured noise.</div>
+      </div>
+      <div class="how-card">
+        <div class="how-name">ML</div>
+        <div class="how-desc">ResNet50 fine-tuned on real vs AI image datasets for direct binary classification.</div>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span class="footer-copy">SlopDetector · open-source AI image forensics</span>
+      <a href="https://github.com/RohanDasguptaUW/SlopDetector"
+         target="_blank" rel="noopener" class="footer-link">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18
+                   6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703
+                   -2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466
+                   -.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53
+                   2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113
+                   -4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65
+                   0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844a9.59 9.59 0 012.504.337
+                   c1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7
+                   1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92
+                   .678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.02
+                   10.02 0 0022 12.017C22 6.484 17.522 2 12 2z"/>
+        </svg>
+        GitHub
+      </a>
+    </div>
+  </footer>
+
+</div><!-- /app -->
+
+<script>
+// ── Colour helpers ────────────────────────────────────────────────────────────
+
+function color(pct) {
+  if (pct >= 75) return '#f87171';
+  if (pct >= 45) return '#fb923c';
+  if (pct >= 20) return '#fbbf24';
+  return '#4ade80';
+}
+
+function label(pct) {
+  if (pct >= 75) return 'AI GENERATED';
+  if (pct >= 45) return 'LIKELY AI';
+  if (pct >= 20) return 'POSSIBLY AI';
+  return 'LIKELY REAL';
+}
+
+// ── SVG half-circle gauge ─────────────────────────────────────────────────────
+
+function gauge(pct, c) {
+  const r = 80, arc = Math.PI * r;
+  const filled = (pct / 100) * arc;
+  return `
+<div class="gauge-wrap">
+  <svg viewBox="0 0 200 108" width="186" height="100"
+       style="overflow:visible;filter:drop-shadow(0 0 14px ${c}38);">
+    <path d="M 10 96 A 80 80 0 0 1 190 96"
+          stroke="#1c1c22" stroke-width="13" fill="none" stroke-linecap="round"/>
+    <path d="M 10 96 A 80 80 0 0 1 190 96"
+          stroke="${c}" stroke-width="13" fill="none" stroke-linecap="round"
+          stroke-dasharray="${filled.toFixed(2)} ${arc.toFixed(2)}"
+          style="filter:drop-shadow(0 0 5px ${c});"/>
+    <text x="100" y="70" text-anchor="middle"
+          fill="${c}" font-size="36" font-weight="800"
+          font-family="-apple-system,Inter,system-ui,sans-serif"
+          letter-spacing="-1">${Math.round(pct)}%</text>
+    <text x="100" y="88" text-anchor="middle"
+          fill="#3f3f46" font-size="8.5" font-weight="700"
+          font-family="-apple-system,Inter,system-ui,sans-serif"
+          letter-spacing="2.5">AI SCORE</text>
+  </svg>
+  <div style="font-size:9px;font-weight:700;letter-spacing:.18em;color:${c};
+              text-align:center;margin-top:-2px;">${label(pct)}</div>
+</div>`;
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+
+function render(data) {
+  const pct = data.ai_percentage;
+  const c   = color(pct);
+
+  // Score card
+  document.getElementById('score-card').innerHTML = `
+    ${gauge(pct, c)}
+    <div class="score-right">
+      <div class="verdict">${data.verdict}</div>
+      <div class="conf-badge" style="background:${c}12;border:1px solid ${c}28;">
+        <div class="conf-dot" style="background:${c};box-shadow:0 0 7px ${c};"></div>
+        <span style="color:${c};">${Math.round(data.confidence * 100)}% confidence</span>
+      </div>
+      <div class="signal-count">
+        ${data.results.length} forensic signal${data.results.length !== 1 ? 's' : ''} · weighted ensemble
+      </div>
+    </div>`;
+
+  // Breakdown
+  document.getElementById('breakdown-rows').innerHTML = data.results.map(r => {
+    const rc  = color(r.ai_percentage);
+    const ind = (r.indicators[0] || '—');
+    const sig = ind.length > 110 ? ind.slice(0, 110) + '…' : ind;
+    const bw  = Math.max(2, r.ai_percentage);
+    return `
+<div class="az-row">
+  <div class="az-header">
+    <div class="az-name-grp">
+      <div class="az-dot" style="background:${rc};box-shadow:0 0 5px ${rc};"></div>
+      <span class="az-name">${r.analyzer}</span>
+    </div>
+    <div class="az-meta">
+      <span class="az-stat">conf ${Math.round(r.confidence * 100)}%</span>
+      <span class="az-stat">wt ${Math.round(r.weight * 100)}%</span>
+      <span class="az-pct" style="color:${rc};">${Math.round(r.ai_percentage)}%</span>
+    </div>
+  </div>
+  <div class="bar-track">
+    <div class="bar-fill" style="width:${bw}%;background:linear-gradient(90deg,${rc}70,${rc});"></div>
+  </div>
+  <div class="az-signal">${sig}</div>
+</div>`;
+  }).join('');
+
+  // Indicators
+  const indHtml = data.results.flatMap(r =>
+    r.indicators.map(ind => {
+      const rc = color(r.ai_percentage);
+      return `
+<div class="ind-row">
+  <div class="ind-dot" style="background:${rc};box-shadow:0 0 4px ${rc};"></div>
+  <span class="ind-src" style="color:${rc};">${r.analyzer}</span>
+  <span class="ind-txt">${ind}</span>
+</div>`;
+    })
+  ).join('');
+  document.getElementById('indicator-rows').innerHTML =
+    indHtml || '<span style="font-size:11px;color:var(--muted)">No indicators.</span>';
+
+  // Comparison
+  if (data.heatmap_b64) {
+    document.getElementById('cmp-orig').src = document.getElementById('preview-img').src;
+    document.getElementById('cmp-heat').src = data.heatmap_b64;
+    document.getElementById('comparison').classList.add('on');
+  } else {
+    document.getElementById('comparison').classList.remove('on');
+  }
+
+  // Show
+  document.getElementById('empty-state').classList.add('hide');
+  document.getElementById('loading-state').style.display = 'none';
+  document.getElementById('results').classList.remove('hide');
+}
+
+// ── State ─────────────────────────────────────────────────────────────────────
+
+let file = null;
+
+function showWorkspace(f) {
+  file = f;
+  const url = URL.createObjectURL(f);
+  document.getElementById('preview-img').src = url;
+  document.getElementById('upload-zone').classList.add('hide');
+  document.getElementById('workspace').classList.add('on');
+  // Reset results
+  document.getElementById('results').classList.add('hide');
+  document.getElementById('empty-state').classList.remove('hide');
+  document.getElementById('loading-state').style.display = 'none';
+  document.getElementById('comparison').classList.remove('on');
+}
+
+function reset() {
+  document.getElementById('upload-zone').classList.remove('hide');
+  document.getElementById('workspace').classList.remove('on');
+  document.getElementById('file-input').value = '';
+  file = null;
+}
+
+// ── Analyse ───────────────────────────────────────────────────────────────────
+
+async function analyse() {
+  if (!file) return;
+
+  const btn = document.getElementById('analyse-btn');
+  btn.disabled = true;
+  btn.textContent = 'Analysing…';
+
+  document.getElementById('empty-state').classList.add('hide');
+  document.getElementById('results').classList.add('hide');
+  document.getElementById('loading-state').style.display = 'flex';
+  document.getElementById('comparison').classList.remove('on');
+
+  try {
+    const fd = new FormData();
+    fd.append('image', file);
+    const res = await fetch('/analyse', { method: 'POST', body: fd });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail || res.statusText);
+    }
+    render(await res.json());
+  } catch (e) {
+    document.getElementById('loading-state').style.display = 'none';
+    document.getElementById('empty-state').classList.remove('hide');
+    document.getElementById('empty-state').innerHTML = `
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#f87171"
+           stroke-width="1.5" stroke-linecap="round">
+        <circle cx="12" cy="12" r="10"/>
+        <line x1="12" y1="8" x2="12" y2="12"/>
+        <line x1="12" y1="16" x2="12.01" y2="16"/>
+      </svg>
+      <span style="color:#f87171;">${e.message}</span>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Analyse Image';
+  }
+}
+
+// ── Events ────────────────────────────────────────────────────────────────────
+
+const zone = document.getElementById('upload-zone');
+
+zone.addEventListener('click', () => document.getElementById('file-input').click());
+
+document.getElementById('file-input').addEventListener('change', e => {
+  const f = e.target.files[0];
+  if (f) showWorkspace(f);
+});
+
+document.getElementById('analyse-btn').addEventListener('click', analyse);
+document.getElementById('change-btn').addEventListener('click', reset);
+
+zone.addEventListener('dragover',  e => { e.preventDefault(); zone.classList.add('over'); });
+zone.addEventListener('dragleave', ()  => zone.classList.remove('over'));
+zone.addEventListener('drop', e => {
+  e.preventDefault();
+  zone.classList.remove('over');
+  const f = e.dataTransfer.files[0];
+  if (f && f.type.startsWith('image/')) showWorkspace(f);
+});
+</script>
+</body>
+</html>
