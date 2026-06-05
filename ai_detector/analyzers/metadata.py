@@ -75,20 +75,6 @@ class MetadataAnalyzer(BaseAnalyzer):
                     score += 80.0
                     indicators.append(f"EXIF Software tag identifies AI generator: '{software}'")
                     break
-        else:
-            score += 10.0
-            indicators.append("No EXIF Software tag present")
-
-        make = _get_exif_tag(exif_data, "Make")
-        model_tag = _get_exif_tag(exif_data, "Model")
-        if not make and not model_tag:
-            score += 15.0
-            indicators.append("No camera Make/Model in EXIF — not from a physical camera")
-
-        datetime_orig = _get_exif_tag(exif_data, "DateTimeOriginal")
-        if not datetime_orig:
-            score += 10.0
-            indicators.append("No DateTimeOriginal in EXIF")
 
         # --- PNG chunks (img.info) ---
         png_info = img.info or {}
@@ -121,13 +107,14 @@ class MetadataAnalyzer(BaseAnalyzer):
 
         ai_percentage = float(min(score, 100.0))
 
-        # Confidence: metadata is deterministic — high when we have a match, low otherwise
+        # Confidence: metadata is only meaningful when a positive fingerprint is found.
+        # Absence of EXIF fields is not evidence — keep confidence very low in that case.
         if ai_percentage > 50:
             confidence = 0.95
-        elif ai_percentage > 15:
+        elif ai_percentage > 0:
             confidence = 0.60
         else:
-            confidence = 0.40
+            confidence = 0.10
 
         return AnalysisResult(
             analyzer=self.name,

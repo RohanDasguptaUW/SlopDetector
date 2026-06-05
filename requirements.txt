@@ -7,5 +7,3 @@ Pillow>=10.0
 scipy>=1.10
 requests>=2.31
 pandas
-torch>=2.0
-torchvision>=0.15
