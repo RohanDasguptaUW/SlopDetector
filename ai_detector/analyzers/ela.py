@@ -47,13 +47,19 @@ class ELAAnalyzer(BaseAnalyzer):
         raw_score = 0.30 * cv_score + 0.70 * amp_score
         ai_percentage = float(np.clip(raw_score * 100, 0, 100))
 
+        # High-quality phone photos shot at low ISO legitimately have very low ELA
+        # amplitude (little prior compression history, clean sensor). Cap to avoid
+        # false positives in this regime.
+        if mean_amp < 1.5:
+            ai_percentage = min(ai_percentage, 40.0)
+
         # Confidence higher when signal is clear
         confidence = float(np.clip(0.4 + 0.6 * abs(cv_score - 0.5) * 2, 0, 1))
 
         indicators: list[str] = []
         if cv < 0.5:
             indicators.append(f"Suspiciously uniform ELA response (CV={cv:.3f})")
-        if mean_amp < 5.0:
+        if mean_amp < 2.0:
             indicators.append(f"Very low ELA amplitude ({mean_amp:.2f}) — minimal JPEG artefacts")
         if mean_amp > 20.0:
             indicators.append(f"High ELA amplitude ({mean_amp:.2f}) — natural JPEG noise present")
