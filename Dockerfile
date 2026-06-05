@@ -8,12 +8,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 \
     && rm -rf /var/lib/apt/lists/*
 
-# Install CPU-only torch first to avoid pulling the CUDA variant (~3 GB)
-RUN pip install --no-cache-dir \
-    torch>=2.0 torchvision>=0.15 \
-    --index-url https://download.pytorch.org/whl/cpu
-
-# Remaining dependencies (torch already satisfied, pip will skip it)
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
@@ -21,7 +15,7 @@ COPY . .
 
 EXPOSE 7860
 
-# Disable CUDA memory caching; this binary has no CUDA anyway (cpu-only torch)
+# Suppress any CUDA memory-caching overhead if torch ever enters the image transitively
 ENV PYTORCH_NO_CUDA_MEMORY_CACHING=1
 
 CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-7860}"]
