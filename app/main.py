@@ -14,6 +14,7 @@ Split mode (Render free tier):
 
 import base64
 import gc
+import io
 import logging
 import os
 import sys
@@ -21,6 +22,7 @@ import tempfile
 from pathlib import Path
 
 import httpx
+from PIL import Image as _Pil
 from fastapi import FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
@@ -52,6 +54,24 @@ else:
     _ANALYZERS = [ELAAnalyzer(), SpectralAnalyzer(), MetadataAnalyzer(), NoiseAnalyzer(), MLAnalyzer()]
 
 _STATIC = Path(__file__).parent / "static"
+_MAX_SIDE = 1024
+
+
+def _shrink(raw: bytes, suffix: str) -> tuple[bytes, str]:
+    """Down-scale to _MAX_SIDE on the longest side, preserving aspect ratio.
+    Returns original bytes unchanged when the image is already within the limit.
+    When resizing is needed the output is always JPEG (quality 95); returns ".jpg"."""
+    with _Pil.open(io.BytesIO(raw)) as img:
+        w, h = img.size
+        if max(w, h) <= _MAX_SIDE:
+            return raw, suffix
+        scale = _MAX_SIDE / max(w, h)
+        img = img.convert("RGB")
+        img = img.resize((round(w * scale), round(h * scale)), _Pil.LANCZOS)
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=95)
+        return buf.getvalue(), ".jpg"
+
 
 app = FastAPI(title="SlopDetector", docs_url=None, redoc_url=None)
 
@@ -144,6 +164,8 @@ async def analyse(image: UploadFile = File(...)):
     image_bytes = await image.read()
     filename    = image.filename or "image.jpg"
     suffix      = Path(filename).suffix or ".jpg"
+
+    image_bytes, suffix = _shrink(image_bytes, suffix)
 
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
         tmp.write(image_bytes)
