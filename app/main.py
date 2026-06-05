@@ -1,6 +1,7 @@
 """SlopDetector — FastAPI backend."""
 
 import base64
+import gc
 import os
 import sys
 import tempfile
@@ -23,6 +24,12 @@ _ANALYZERS = [ELAAnalyzer(), SpectralAnalyzer(), MetadataAnalyzer(), NoiseAnalyz
 _STATIC = Path(__file__).parent / "static"
 
 app = FastAPI(title="SlopDetector", docs_url=None, redoc_url=None)
+
+
+@app.get("/health")
+async def health():
+    """Lightweight liveness probe — never triggers model load."""
+    return {"status": "ok"}
 
 
 @app.get("/")
@@ -73,11 +80,11 @@ async def analyse(image: UploadFile = File(...)):
             "heatmap_b64":   heatmap_b64,
             "results": [
                 {
-                    "analyzer":    r.analyzer,
+                    "analyzer":      r.analyzer,
                     "ai_percentage": round(r.ai_percentage, 1),
-                    "confidence":  round(r.confidence, 3),
-                    "weight":      round(weights.get(r.analyzer, 0), 3),
-                    "indicators":  r.indicators,
+                    "confidence":    round(r.confidence, 3),
+                    "weight":        round(weights.get(r.analyzer, 0), 3),
+                    "indicators":    r.indicators,
                 }
                 for r in results
             ],
@@ -87,6 +94,7 @@ async def analyse(image: UploadFile = File(...)):
             os.unlink(img_path)
         except OSError:
             pass
+        gc.collect()
 
 
 if __name__ == "__main__":

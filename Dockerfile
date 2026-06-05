@@ -21,4 +21,7 @@ COPY . .
 
 EXPOSE 7860
 
+# Disable CUDA memory caching; this binary has no CUDA anyway (cpu-only torch)
+ENV PYTORCH_NO_CUDA_MEMORY_CACHING=1
+
 CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-7860}"]
