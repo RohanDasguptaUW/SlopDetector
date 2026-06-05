@@ -165,17 +165,25 @@ async def analyse(image: UploadFile = File(...)):
     filename    = image.filename or "image.jpg"
     suffix      = Path(filename).suffix or ".jpg"
 
-    image_bytes, suffix = _shrink(image_bytes, suffix)
+    # Noise analysis needs the original full-resolution pixels — resizing destroys
+    # the shot-noise pattern that distinguishes camera sensor noise from AI output.
+    # All other analyzers get the down-scaled copy to keep memory usage low.
+    shrunk_bytes, shrunk_suffix = _shrink(image_bytes, suffix)
 
-    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-        tmp.write(image_bytes)
+    with tempfile.NamedTemporaryFile(suffix=shrunk_suffix, delete=False) as tmp:
+        tmp.write(shrunk_bytes)
         img_path = tmp.name
+
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp_orig:
+        tmp_orig.write(image_bytes)
+        orig_path = tmp_orig.name
 
     try:
         results: list[AnalysisResult] = []
         for analyzer in _ANALYZERS:
             try:
-                results.append(analyzer.analyze(img_path))
+                path = orig_path if analyzer.name == "noise" else img_path
+                results.append(analyzer.analyze(path))
             except Exception:
                 pass
 
@@ -223,10 +231,11 @@ async def analyse(image: UploadFile = File(...)):
             ],
         }
     finally:
-        try:
-            os.unlink(img_path)
-        except OSError:
-            pass
+        for p in (img_path, orig_path):
+            try:
+                os.unlink(p)
+            except OSError:
+                pass
         gc.collect()
 
 

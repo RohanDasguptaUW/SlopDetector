@@ -76,12 +76,21 @@ class NoiseAnalyzer(BaseAnalyzer):
         heatmap = (1.0 - np.clip(var_map / var95, 0.0, 1.0)).astype(np.float32)
 
         # ── Score ────────────────────────────────────────────────────────────
-        raw_score = 0.60 * shot_noise_score + 0.40 * oversmooth_score
+        # Shot-noise Poisson correlation is destroyed by JPEG compression,
+        # sharpening, and any post-processing, so it fires on real photos almost
+        # as often as on AI images — useless as a standalone signal. Exclude it
+        # from the score and only incorporate it when over-smoothness independently
+        # indicates AI (both signals must agree before shot-noise contributes).
+        shot_noise_corroborates = oversmooth_score > 0.6
+        if shot_noise_corroborates:
+            raw_score = 0.25 * shot_noise_score + 0.75 * oversmooth_score
+        else:
+            raw_score = oversmooth_score
         ai_percentage = float(np.clip(raw_score * 100, 0, 100))
-        confidence = float(np.clip(0.35 + 0.45 * max(abs(corr), oversmooth_score * 0.5), 0, 1))
+        confidence = float(np.clip(0.35 + 0.50 * oversmooth_score, 0, 0.80))
 
         indicators: list[str] = []
-        if corr < 0.15:
+        if corr < 0.15 and shot_noise_corroborates:
             indicators.append(
                 f"Shot noise model absent (signal–noise corr={corr:.2f}) — no camera sensor signature"
             )
