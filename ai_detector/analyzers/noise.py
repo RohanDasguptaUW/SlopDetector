@@ -76,7 +76,10 @@ class NoiseAnalyzer(BaseAnalyzer):
         heatmap = (1.0 - np.clip(var_map / var95, 0.0, 1.0)).astype(np.float32)
 
         # ── Score ────────────────────────────────────────────────────────────
-        raw_score = 0.60 * shot_noise_score + 0.40 * oversmooth_score
+        # Shot-noise correlation is unreliable for recompressed/stripped JPEGs
+        # (they always fail the Poisson check regardless of origin), so weight it
+        # lightly. Over-smoothness is the more robust per-pixel signal.
+        raw_score = 0.30 * shot_noise_score + 0.70 * oversmooth_score
         ai_percentage = float(np.clip(raw_score * 100, 0, 100))
         confidence = float(np.clip(0.35 + 0.45 * max(abs(corr), oversmooth_score * 0.5), 0, 1))
 
