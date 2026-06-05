@@ -11,3 +11,12 @@ venv/
 slopdetector_output/
 .pytest_cache/
 training/real_photos/
+test files/
+test files/
+training/real_photos/
+datasets/
+training/best_model*.pt
+*.pt
+*.zip
+slopdetector_output/
+slopdetector.egg-info/
