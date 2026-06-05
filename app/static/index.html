@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>SlopDetector</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0a0a0a;
+      --s1:       #111111;
+      --s2:       #161616;
+      --line:     #222222;
+      --line2:    #2a2a2a;
+      --txt:      #ffffff;
+      --txt2:     #a0a0a0;
+      --txt3:     #444444;
+      --acc:      #7c3aed;
+      --acc-lo:   rgba(124,58,237,.12);
+      --acc-bdr:  rgba(124,58,237,.3);
+      --red:      #ef4444;
+      --orange:   #f97316;
+      --yellow:   #eab308;
+      --green:    #22c55e;
+      --r:        10px;
+      --r-sm:     7px;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--txt);
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      font-size: 14px;
+      line-height: 1.6;
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    #app {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 0 24px 80px;
+    }
+
+    /* ─── Header ──────────────────────────────── */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 28px 0 20px;
+      border-bottom: 1px solid var(--line);
+      margin-bottom: 24px;
+    }
+
+    .logo { display: flex; align-items: center; gap: 12px; }
+
+    .logo-icon {
+      width: 38px; height: 38px;
+      border-radius: 9px;
+      background: var(--acc);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+      box-shadow: 0 0 0 1px var(--acc-bdr), 0 4px 24px rgba(124,58,237,.35);
+      flex-shrink: 0;
+    }
+
+    .logo-name { font-size: 17px; font-weight: 800; letter-spacing: -.4px; }
+    .logo-sub  { font-size: 11px; color: var(--txt3); letter-spacing: .04em; }
+
+    .pill {
+      font-size: 10px; font-weight: 600;
+      color: var(--txt3);
+      background: var(--s1);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 3px 10px;
+      letter-spacing: .06em;
+    }
+
+    /* ─── Warning ─────────────────────────────── */
+    .warn {
+      background: #0c0800;
+      border: 1px solid #3a1f00;
+      border-radius: var(--r-sm);
+      padding: 10px 14px;
+      font-size: 12px;
+      color: #b45309;
+      margin-bottom: 20px;
+      line-height: 1.5;
+    }
+    .warn b { color: #f59e0b; }
+
+    /* ─── Upload zone ─────────────────────────── */
+    #drop {
+      background: var(--s1);
+      border: 1.5px dashed var(--line2);
+      border-radius: var(--r);
+      padding: 64px 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color .15s, background .15s;
+      user-select: none;
+    }
+
+    #drop:hover, #drop.over {
+      border-color: var(--acc);
+      background: #0e0b16;
+    }
+
+    #file-in { display: none; }
+
+    .drop-icon {
+      width: 52px; height: 52px;
+      border-radius: 12px;
+      background: var(--s2);
+      border: 1px solid var(--line2);
+      display: flex; align-items: center; justify-content: center;
+      margin: 0 auto 18px;
+    }
+
+    .drop-icon svg {
+      width: 24px; height: 24px;
+      stroke: var(--txt3); fill: none;
+      stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round;
+    }
+
+    .drop-title { font-size: 15px; font-weight: 600; margin-bottom: 5px; }
+    .drop-sub   { font-size: 12px; color: var(--txt2); }
+
+    /* ─── Workspace ───────────────────────────── */
+    #ws { display: none; }
+    #ws.on { display: block; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 264px 1fr;
+      gap: 14px;
+      align-items: start;
+    }
+
+    @media (max-width: 680px) { .grid { grid-template-columns: 1fr; } }
+
+    /* ─── Preview card ────────────────────────── */
+    .preview-card {
+      background: var(--s1);
+      border: 1px solid var(--line);
+      border-radius: var(--r);
+      overflow: hidden;
+    }
+
+    #prev-img {
+      width: 100%; display: block;
+      max-height: 290px; object-fit: cover;
+      background: var(--s2);
+    }
+
+    .preview-btns {
+      padding: 12px;
+      display: flex; flex-direction: column; gap: 8px;
+      border-top: 1px solid var(--line);
+    }
+
+    /* ─── Buttons ─────────────────────────────── */
+    .btn {
+      display: block; width: 100%;
+      padding: 10px 16px;
+      border: none; border-radius: var(--r-sm);
+      font-family: inherit; font-size: 12px;
+      font-weight: 700; letter-spacing: .08em;
+      text-transform: uppercase; cursor: pointer;
+      transition: opacity .15s, transform .1s;
+    }
+
+    .btn-acc {
+      background: var(--acc);
+      color: #fff;
+      box-shadow: 0 4px 20px rgba(124,58,237,.4);
+    }
+
+    .btn-acc:hover   { opacity: .9; transform: translateY(-1px); }
+    .btn-acc:active  { transform: none; }
+    .btn-acc:disabled { opacity: .4; cursor: not-allowed; transform: none; box-shadow: none; }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--txt2);
+      border: 1px solid var(--line);
+    }
+    .btn-ghost:hover { border-color: var(--line2); color: var(--txt); }
+
+    /* ─── Results column ──────────────────────── */
+    .res-col { display: flex; flex-direction: column; gap: 10px; }
+
+    /* Empty / loading states */
+    .state-box {
+      background: var(--s1);
+      border: 1px solid var(--line);
+      border-radius: var(--r);
+      padding: 48px 24px;
+      display: flex; flex-direction: column;
+      align-items: center; gap: 10px;
+      color: var(--txt3); font-size: 12px; text-align: center;
+    }
+
+    .state-box svg { stroke: var(--line2); }
+
+    .loading {
+      background: var(--s1);
+      border: 1px solid var(--line);
+      border-radius: var(--r);
+      padding: 36px 24px;
+      display: none;
+      align-items: center; justify-content: center;
+      gap: 10px; font-size: 12px; color: var(--txt2);
+    }
+
+    .spin {
+      width: 16px; height: 16px;
+      border: 2px solid var(--line2);
+      border-top-color: var(--acc);
+      border-radius: 50%;
+      animation: spin .65s linear infinite;
+      flex-shrink: 0;
+    }
+
+    /* ─── Score card ──────────────────────────── */
+    .score-card {
+      background: var(--s1);
+      border: 1px solid var(--line);
+      border-radius: var(--r);
+      padding: 24px;
+      display: flex; align-items: center; gap: 24px;
+    }
+
+    .gauge-wrap { flex-shrink: 0; }
+
+    .score-right { flex: 1; min-width: 0; }
+
+    .verdict {
+      font-size: 18px; font-weight: 700;
+      color: var(--txt); margin-bottom: 10px; line-height: 1.2;
+    }
+
+    .conf-pill {
+      display: inline-flex; align-items: center; gap: 6px;
+      border-radius: 20px; padding: 4px 12px;
+      font-size: 11px; font-weight: 600;
+      margin-bottom: 10px;
+    }
+
+    .conf-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+
+    .sig-count { font-size: 11px; color: var(--txt3); }
+
+    /* ─── Card ────────────────────────────────── */
+    .card {
+      background: var(--s1);
+      border: 1px solid var(--line);
+      border-radius: var(--r);
+      padding: 16px 18px;
+    }
+
+    .card-hd {
+      font-size: 9px; font-weight: 700;
+      letter-spacing: .16em; text-transform: uppercase;
+      color: var(--txt3); margin-bottom: 14px;
+    }
+
+    /* ─── Analyzer rows ───────────────────────── */
+    .az {
+      padding: 10px 0;
+      border-bottom: 1px solid var(--line);
+    }
+    .az:first-child { padding-top: 0; }
+    .az:last-child  { border-bottom: none; padding-bottom: 0; }
+
+    .az-top {
+      display: flex; align-items: center;
+      justify-content: space-between; margin-bottom: 7px;
+    }
+
+    .az-left { display: flex; align-items: center; gap: 7px; }
+
+    .az-dot {
+      width: 5px; height: 5px;
+      border-radius: 50%; flex-shrink: 0;
+    }
+
+    .az-name {
+      font-size: 10px; font-weight: 700;
+      letter-spacing: .1em; text-transform: uppercase;
+      color: #888;
+    }
+
+    .az-right { display: flex; align-items: center; gap: 10px; }
+
+    .az-meta { font-size: 9px; color: var(--txt3); }
+
+    .az-pct {
+      font-size: 15px; font-weight: 800;
+      min-width: 36px; text-align: right;
+    }
+
+    .bar-bg {
+      height: 4px; background: var(--s2);
+      border-radius: 2px; overflow: hidden;
+      margin-bottom: 6px;
+    }
+
+    .bar-fill { height: 100%; border-radius: 2px; }
+
+    .az-sig { font-size: 11px; color: var(--txt2); line-height: 1.4; padding-left: 12px; }
+
+    /* ─── Indicator rows ──────────────────────── */
+    .ind {
+      display: flex; gap: 9px; padding: 7px 0;
+      border-bottom: 1px solid var(--line);
+      align-items: flex-start;
+    }
+    .ind:first-child { padding-top: 0; }
+    .ind:last-child  { border-bottom: none; padding-bottom: 0; }
+
+    .ind-dot {
+      width: 5px; height: 5px;
+      border-radius: 50%; flex-shrink: 0; margin-top: 5px;
+    }
+
+    .ind-src {
+      font-size: 9px; font-weight: 700;
+      letter-spacing: .08em; text-transform: uppercase;
+      white-space: nowrap; min-width: 52px;
+    }
+
+    .ind-txt { font-size: 11px; color: var(--txt2); line-height: 1.5; }
+
+    /* ─── Comparison ──────────────────────────── */
+    #cmp {
+      display: none;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px; margin-top: 4px;
+    }
+    #cmp.on { display: grid; }
+
+    @media (max-width: 540px) { #cmp { grid-template-columns: 1fr; } }
+
+    .cmp-card {
+      background: var(--s1);
+      border: 1px solid var(--line);
+      border-radius: var(--r); overflow: hidden;
+    }
+
+    .cmp-lbl {
+      padding: 8px 14px;
+      font-size: 9px; font-weight: 700;
+      letter-spacing: .12em; text-transform: uppercase;
+      color: var(--txt3); border-bottom: 1px solid var(--line);
+    }
+
+    .cmp-card img {
+      width: 100%; display: block;
+      max-height: 320px; object-fit: contain;
+      background: #050505;
+    }
+
+    /* ─── Footer ──────────────────────────────── */
+    footer {
+      margin-top: 56px; padding-top: 24px;
+      border-top: 1px solid var(--line);
+    }
+
+    .ft-hd {
+      font-size: 9px; font-weight: 700;
+      letter-spacing: .16em; text-transform: uppercase;
+      color: var(--txt3); margin-bottom: 12px;
+    }
+
+    .ft-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(158px, 1fr));
+      gap: 8px; margin-bottom: 20px;
+    }
+
+    .ft-card {
+      background: var(--s1);
+      border: 1px solid var(--line);
+      border-radius: var(--r-sm);
+      padding: 12px 14px;
+    }
+
+    .ft-name {
+      font-size: 9px; font-weight: 700;
+      letter-spacing: .1em; text-transform: uppercase;
+      color: var(--acc); margin-bottom: 5px;
+    }
+
+    .ft-desc { font-size: 10.5px; color: var(--txt2); line-height: 1.5; }
+
+    .ft-bot {
+      display: flex; align-items: center;
+      justify-content: space-between; flex-wrap: wrap; gap: 8px;
+    }
+
+    .ft-copy { font-size: 11px; color: var(--txt3); }
+
+    .ft-link {
+      display: inline-flex; align-items: center; gap: 5px;
+      font-size: 11px; color: var(--txt2);
+      text-decoration: none; transition: color .15s;
+    }
+    .ft-link:hover { color: var(--txt); }
+
+    /* ─── Utils ───────────────────────────────── */
+    .gone { display: none !important; }
+
+    @keyframes spin  { to { transform: rotate(360deg); } }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+    @keyframes up    { from{opacity:0;transform:translateY(7px)} to{opacity:1;transform:none} }
+    .up { animation: up .22s ease; }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <header>
+    <div class="logo">
+      <div class="logo-icon">🔍</div>
+      <div>
+        <div class="logo-name">SlopDetector</div>
+        <div class="logo-sub">AI Image Forensics</div>
+      </div>
+    </div>
+    <span class="pill">BETA</span>
+  </header>
+
+  <div class="warn">
+    <b>⚠ Work in progress</b> — accuracy varies by generator. Best results on
+    DALL·E, Midjourney, and Stable Diffusion. GPT-Image-2 detection is a known
+    limitation under active development.
+  </div>
+
+  <!-- Drop zone -->
+  <div id="drop">
+    <input type="file" id="file-in" accept="image/*">
+    <div class="drop-icon">
+      <svg viewBox="0 0 24 24">
+        <path d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5
+                 M15.75 7.5L12 3m0 0L8.25 7.5M12 3v13.5"/>
+      </svg>
+    </div>
+    <div class="drop-title">Drop an image here</div>
+    <div class="drop-sub">or click to browse &nbsp;·&nbsp; JPEG &nbsp;PNG &nbsp;WebP &nbsp;TIFF</div>
+  </div>
+
+  <!-- Workspace -->
+  <div id="ws">
+    <div class="grid">
+
+      <!-- Left: preview -->
+      <div>
+        <div class="preview-card">
+          <img id="prev-img" src="" alt="Preview">
+          <div class="preview-btns">
+            <button class="btn btn-acc" id="btn-analyse">Analyse Image</button>
+            <button class="btn btn-ghost" id="btn-change">Change image</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: results -->
+      <div class="res-col">
+
+        <div class="state-box" id="state-idle">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none"
+               stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+          </svg>
+          <span>Click Analyse to inspect this image</span>
+        </div>
+
+        <div class="loading" id="state-load">
+          <div class="spin"></div>Running forensic analysis…
+        </div>
+
+        <div id="res" class="gone up">
+          <div class="res-col">
+            <div class="score-card" id="score-card"></div>
+            <div class="card" id="az-card">
+              <div class="card-hd">Analyzer Breakdown</div>
+              <div id="az-rows"></div>
+            </div>
+            <div class="card" id="ind-card">
+              <div class="card-hd">Forensic Indicators</div>
+              <div id="ind-rows"></div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Side-by-side comparison -->
+    <div id="cmp">
+      <div class="cmp-card">
+        <div class="cmp-lbl">Original</div>
+        <img id="cmp-orig" src="" alt="Original">
+      </div>
+      <div class="cmp-card">
+        <div class="cmp-lbl">Spatial Heatmap</div>
+        <img id="cmp-heat" src="" alt="Heatmap">
+      </div>
+    </div>
+  </div><!-- /ws -->
+
+  <footer>
+    <div class="ft-hd">How It Works</div>
+    <div class="ft-grid">
+      <div class="ft-card">
+        <div class="ft-name">ELA</div>
+        <div class="ft-desc">Error Level Analysis detects compression artifacts inconsistent with a real photo's editing history.</div>
+      </div>
+      <div class="ft-card">
+        <div class="ft-name">Spectral</div>
+        <div class="ft-desc">Frequency-domain analysis reveals unnatural spectral patterns left by generative models.</div>
+      </div>
+      <div class="ft-card">
+        <div class="ft-name">Metadata</div>
+        <div class="ft-desc">EXIF and creation metadata differ between AI generators and cameras with real optics.</div>
+      </div>
+      <div class="ft-card">
+        <div class="ft-name">Noise</div>
+        <div class="ft-desc">Pixel-level noise distribution — AI images exhibit unnaturally uniform or structured noise.</div>
+      </div>
+      <div class="ft-card">
+        <div class="ft-name">ML</div>
+        <div class="ft-desc">ResNet50 fine-tuned on real vs AI image datasets for direct binary classification.</div>
+      </div>
+    </div>
+    <div class="ft-bot">
+      <span class="ft-copy">SlopDetector · open-source AI image forensics</span>
+      <a href="https://github.com/RohanDasguptaUW/SlopDetector"
+         target="_blank" rel="noopener" class="ft-link">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839
+                   9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703
+                   -2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466
+                   -1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032
+                   1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088
+                   .636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988
+                   1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75
+                   1.026A9.564 9.564 0 0112 6.844a9.59 9.59 0 012.504.337c1.909
+                   -1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651
+                   .64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566
+                   4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747
+                   0 .268.18.58.688.482A10.02 10.02 0 0022 12.017C22 6.484
+                   17.522 2 12 2z"/>
+        </svg>
+        GitHub
+      </a>
+    </div>
+  </footer>
+
+</div><!-- /app -->
+
+<script>
+// ─── Palette ───────────────────────────────────────────────────────────────────
+
+function scoreColor(p) {
+  if (p >= 75) return '#ef4444';
+  if (p >= 45) return '#f97316';
+  if (p >= 20) return '#eab308';
+  return '#22c55e';
+}
+
+function scoreLabel(p) {
+  if (p >= 75) return 'AI GENERATED';
+  if (p >= 45) return 'LIKELY AI';
+  if (p >= 20) return 'POSSIBLY AI';
+  return 'LIKELY REAL';
+}
+
+// ─── SVG circular gauge ────────────────────────────────────────────────────────
+// Full circle: radius 82, circumference ≈ 515.2
+// Arc starts at the top (rotate −90°), fills clockwise.
+
+function buildGauge(pct, c) {
+  const r    = 82;
+  const circ = 2 * Math.PI * r;      // 515.22
+  const off  = circ * (1 - pct / 100); // portion left unfilled
+  const lbl  = scoreLabel(pct);
+
+  return `
+<svg viewBox="0 0 200 200" width="190" height="190" aria-label="${Math.round(pct)}% AI score"
+     style="filter:drop-shadow(0 0 18px ${c}30);">
+  <!-- Track -->
+  <circle cx="100" cy="100" r="${r}" fill="none"
+          stroke="#1a1a1a" stroke-width="13"/>
+  <!-- Fill arc -->
+  <circle cx="100" cy="100" r="${r}" fill="none"
+          stroke="${c}" stroke-width="13" stroke-linecap="round"
+          stroke-dasharray="${circ.toFixed(2)}"
+          stroke-dashoffset="${off.toFixed(2)}"
+          transform="rotate(-90 100 100)"
+          style="filter:drop-shadow(0 0 6px ${c});transition:stroke-dashoffset .5s ease;"/>
+  <!-- Percentage -->
+  <text x="100" y="93" text-anchor="middle" fill="#ffffff"
+        font-size="42" font-weight="800"
+        font-family="Inter,-apple-system,system-ui,sans-serif"
+        letter-spacing="-2">${Math.round(pct)}%</text>
+  <!-- AI SCORE label -->
+  <text x="100" y="113" text-anchor="middle" fill="#444"
+        font-size="9.5" font-weight="700"
+        font-family="Inter,-apple-system,system-ui,sans-serif"
+        letter-spacing="2.5">AI SCORE</text>
+  <!-- Verdict label -->
+  <text x="100" y="131" text-anchor="middle" fill="${c}"
+        font-size="10" font-weight="700"
+        font-family="Inter,-apple-system,system-ui,sans-serif"
+        letter-spacing="1">${lbl}</text>
+</svg>`;
+}
+
+// ─── Render ────────────────────────────────────────────────────────────────────
+
+function render(data) {
+  const pct = data.ai_percentage;
+  const c   = scoreColor(pct);
+
+  // Score card
+  document.getElementById('score-card').innerHTML = `
+    <div class="gauge-wrap">${buildGauge(pct, c)}</div>
+    <div class="score-right">
+      <div class="verdict">${data.verdict}</div>
+      <div class="conf-pill" style="background:${c}18;border:1px solid ${c}35;">
+        <div class="conf-dot" style="background:${c};box-shadow:0 0 8px ${c};"></div>
+        <span style="color:${c};">${Math.round(data.confidence * 100)}% confidence</span>
+      </div>
+      <div class="sig-count">
+        ${data.results.length} forensic signal${data.results.length !== 1 ? 's' : ''}
+        &nbsp;·&nbsp; weighted ensemble
+      </div>
+    </div>`;
+
+  // Analyzer rows
+  document.getElementById('az-rows').innerHTML = data.results.map(r => {
+    const rc  = scoreColor(r.ai_percentage);
+    const sig = r.indicators[0] || '—';
+    const txt = sig.length > 110 ? sig.slice(0, 110) + '…' : sig;
+    const bw  = Math.max(2, r.ai_percentage);
+    return `
+<div class="az">
+  <div class="az-top">
+    <div class="az-left">
+      <div class="az-dot" style="background:${rc};box-shadow:0 0 5px ${rc};"></div>
+      <span class="az-name">${r.analyzer}</span>
+    </div>
+    <div class="az-right">
+      <span class="az-meta">conf ${Math.round(r.confidence * 100)}%</span>
+      <span class="az-meta">wt ${Math.round(r.weight * 100)}%</span>
+      <span class="az-pct" style="color:${rc};">${Math.round(r.ai_percentage)}%</span>
+    </div>
+  </div>
+  <div class="bar-bg">
+    <div class="bar-fill" style="width:${bw}%;background:${rc};"></div>
+  </div>
+  <div class="az-sig">${txt}</div>
+</div>`;
+  }).join('');
+
+  // Indicator rows
+  const indHtml = data.results.flatMap(r =>
+    r.indicators.map(ind => {
+      const rc = scoreColor(r.ai_percentage);
+      return `
+<div class="ind">
+  <div class="ind-dot" style="background:${rc};box-shadow:0 0 4px ${rc};"></div>
+  <span class="ind-src" style="color:${rc};">${r.analyzer}</span>
+  <span class="ind-txt">${ind}</span>
+</div>`;
+    })
+  ).join('');
+  document.getElementById('ind-rows').innerHTML =
+    indHtml || '<span style="font-size:11px;color:#444">No indicators returned.</span>';
+
+  // Comparison
+  if (data.heatmap_b64) {
+    document.getElementById('cmp-orig').src = document.getElementById('prev-img').src;
+    document.getElementById('cmp-heat').src = data.heatmap_b64;
+    document.getElementById('cmp').classList.add('on');
+  } else {
+    document.getElementById('cmp').classList.remove('on');
+  }
+
+  // Reveal
+  document.getElementById('state-idle').classList.add('gone');
+  document.getElementById('state-load').style.display = 'none';
+  const res = document.getElementById('res');
+  res.classList.remove('gone');
+  res.classList.add('up');
+}
+
+// ─── State ─────────────────────────────────────────────────────────────────────
+
+let currentFile = null;
+
+function openWorkspace(file) {
+  currentFile = file;
+  document.getElementById('prev-img').src = URL.createObjectURL(file);
+  document.getElementById('drop').classList.add('gone');
+  document.getElementById('ws').classList.add('on');
+  document.getElementById('res').classList.add('gone');
+  document.getElementById('state-idle').classList.remove('gone');
+  document.getElementById('state-load').style.display = 'none';
+  document.getElementById('cmp').classList.remove('on');
+}
+
+function reset() {
+  document.getElementById('drop').classList.remove('gone');
+  document.getElementById('ws').classList.remove('on');
+  document.getElementById('file-in').value = '';
+  currentFile = null;
+}
+
+// ─── Analyse ───────────────────────────────────────────────────────────────────
+
+async function analyse() {
+  if (!currentFile) return;
+  const btn = document.getElementById('btn-analyse');
+  btn.disabled = true;
+  btn.textContent = 'Analysing…';
+
+  document.getElementById('state-idle').classList.add('gone');
+  document.getElementById('res').classList.add('gone');
+  document.getElementById('state-load').style.display = 'flex';
+  document.getElementById('cmp').classList.remove('on');
+
+  try {
+    const fd = new FormData();
+    fd.append('image', currentFile);
+    const resp = await fetch('/analyse', { method: 'POST', body: fd });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+      throw new Error(err.detail || resp.statusText);
+    }
+    render(await resp.json());
+  } catch (e) {
+    document.getElementById('state-load').style.display = 'none';
+    const idle = document.getElementById('state-idle');
+    idle.classList.remove('gone');
+    idle.innerHTML = `
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#ef4444"
+           stroke-width="1.5" stroke-linecap="round">
+        <circle cx="12" cy="12" r="10"/>
+        <line x1="12" y1="8" x2="12" y2="12"/>
+        <line x1="12" y1="16" x2="12.01" y2="16"/>
+      </svg>
+      <span style="color:#ef4444;">${e.message}</span>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Analyse Image';
+  }
+}
+
+// ─── Events ────────────────────────────────────────────────────────────────────
+
+const drop = document.getElementById('drop');
+
+drop.addEventListener('click', () => document.getElementById('file-in').click());
+
+document.getElementById('file-in').addEventListener('change', e => {
+  const f = e.target.files[0];
+  if (f) openWorkspace(f);
+});
+
+document.getElementById('btn-analyse').addEventListener('click', analyse);
+document.getElementById('btn-change').addEventListener('click', reset);
+
+drop.addEventListener('dragover',  e => { e.preventDefault(); drop.classList.add('over'); });
+drop.addEventListener('dragleave', ()  => drop.classList.remove('over'));
+drop.addEventListener('drop', e => {
+  e.preventDefault();
+  drop.classList.remove('over');
+  const f = e.dataTransfer.files[0];
+  if (f && f.type.startsWith('image/')) openWorkspace(f);
+});
+</script>
+</body>
+</html>
