@@ -10,3 +10,4 @@ build/
 venv/
 slopdetector_output/
 .pytest_cache/
+training/real_photos/
