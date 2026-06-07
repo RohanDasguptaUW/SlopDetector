@@ -3,9 +3,7 @@ title: SlopDetector
 emoji: 🔍
 colorFrom: purple
 colorTo: red
-sdk: gradio
-sdk_version: "6.15.1"
-app_file: app/gradio_app.py
+sdk: docker
 pinned: false
 license: mit
 short_description: Detect AI-generated images using forensic analysis
