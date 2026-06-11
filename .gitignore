@@ -11,8 +11,12 @@ venv/
 .pytest_cache/
 slopdetector.egg-info/
 
+.DS_Store
+
 # Large binaries / model checkpoints
 *.pt
+# best_model.pt is the deployed checkpoint, tracked via Git LFS
+!training/best_model.pt
 *.zip
 
 # Image files — never commit test data or outputs

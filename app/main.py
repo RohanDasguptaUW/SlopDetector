@@ -53,6 +53,8 @@ else:
     from ai_detector.analyzers.ml import MLAnalyzer  # torch not imported until first call
     _ANALYZERS = [ELAAnalyzer(), SpectralAnalyzer(), MetadataAnalyzer(), NoiseAnalyzer(), MLAnalyzer()]
 
+log.info("Active analyzers: %s", [a.name for a in _ANALYZERS])
+
 _STATIC = Path(__file__).parent / "static"
 _MAX_SIDE = 1024
 
@@ -185,7 +187,7 @@ async def analyse(image: UploadFile = File(...)):
                 path = orig_path if analyzer.name == "noise" else img_path
                 results.append(analyzer.analyze(path))
             except Exception:
-                pass
+                log.exception("analyzer %s failed", analyzer.name)
 
         if _SPLIT_MODE:
             ml_result = await _fetch_ml_score(image_bytes, filename)
