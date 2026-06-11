@@ -1,5 +1,6 @@
 """ResNet50 ML analyzer — loads a fine-tuned checkpoint and runs inference."""
 
+import logging
 import os
 from pathlib import Path
 
@@ -8,6 +9,8 @@ from PIL import Image
 
 from .base import AnalysisResult, BaseAnalyzer
 from .metadata import has_camera_exif
+
+log = logging.getLogger(__name__)
 
 _DEFAULT_MODEL_PATH = Path(__file__).parents[2] / "training" / "best_model.pt"
 
@@ -32,7 +35,9 @@ class MLAnalyzer(BaseAnalyzer):
             )
 
         model_path = Path(os.environ.get("SLOP_MODEL_PATH", _DEFAULT_MODEL_PATH))
+        log.info("MLAnalyzer: looking for model at %s (exists=%s)", model_path, model_path.exists())
         if not model_path.exists():
+            log.warning("MLAnalyzer: model file not found at %s — skipping ML analysis", model_path)
             return AnalysisResult(
                 analyzer=self.name,
                 ai_percentage=50.0,
@@ -41,11 +46,21 @@ class MLAnalyzer(BaseAnalyzer):
             )
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-        model = models.resnet50(weights=None)
-        model.fc = torch.nn.Linear(model.fc.in_features, 2)
-        model.load_state_dict(torch.load(model_path, map_location=device))
-        model.to(device).eval()
+        log.info("MLAnalyzer: loading model from %s on device=%s", model_path, device)
+        try:
+            model = models.resnet50(weights=None)
+            model.fc = torch.nn.Linear(model.fc.in_features, 2)
+            model.load_state_dict(torch.load(model_path, map_location=device))
+            model.to(device).eval()
+        except Exception:
+            log.exception("MLAnalyzer: failed to load model from %s", model_path)
+            return AnalysisResult(
+                analyzer=self.name,
+                ai_percentage=50.0,
+                confidence=0.0,
+                indicators=[f"Model load failed ({model_path}) — ML analysis skipped"],
+            )
+        log.info("MLAnalyzer: model loaded successfully")
 
         preprocess = transforms.Compose([
             transforms.Resize(256),

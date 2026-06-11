@@ -7,10 +7,10 @@ from .analyzers.base import AnalysisResult
 
 _DEFAULT_WEIGHTS: dict[str, float] = {
     "ml": 0.500,
-    "ela": 0.175,
-    "spectral": 0.150,
-    "metadata": 0.100,
-    "noise": 0.075,
+    "ela": 0.350,
+    "spectral": 0.300,
+    "metadata": 0.200,
+    "noise": 0.150,
 }
 
 

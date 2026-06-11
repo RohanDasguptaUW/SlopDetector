@@ -8,15 +8,20 @@ build/
 .env
 .venv/
 venv/
-slopdetector_output/
 .pytest_cache/
-training/real_photos/
-test files/
+slopdetector.egg-info/
+
+# Large binaries / model checkpoints
+*.pt
+*.zip
+
+# Image files — never commit test data or outputs
+*.png
+*.jpg
+*.jpeg
+
+# Test data and generated output — never commit
 test files/
 training/real_photos/
 datasets/
-training/best_model*.pt
-*.pt
-*.zip
 slopdetector_output/
-slopdetector.egg-info/
