@@ -45,6 +45,23 @@ class MLAnalyzer(BaseAnalyzer):
                 indicators=[f"Model file not found ({model_path}) — ML analysis skipped"],
             )
 
+        # A ~130-byte file starting with "version https://git-lfs..." means the
+        # checkout has the Git LFS pointer instead of the real 94MB checkpoint.
+        if model_path.stat().st_size < 1024:
+            head = model_path.read_bytes()[:40]
+            if head.startswith(b"version https://git-lfs"):
+                log.error(
+                    "MLAnalyzer: %s is a Git LFS pointer (%d bytes), not the model — "
+                    "run 'git lfs pull' or ensure LFS objects are pushed to this remote",
+                    model_path, model_path.stat().st_size,
+                )
+                return AnalysisResult(
+                    analyzer=self.name,
+                    ai_percentage=50.0,
+                    confidence=0.0,
+                    indicators=[f"Model file is a Git LFS pointer ({model_path}) — ML analysis skipped"],
+                )
+
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         log.info("MLAnalyzer: loading model from %s on device=%s", model_path, device)
         try:
