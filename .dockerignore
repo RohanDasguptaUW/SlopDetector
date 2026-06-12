@@ -1,0 +1,24 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.git/
+.env
+.venv/
+venv/
+.pytest_cache/
+slopdetector.egg-info/
+slopdetector_output/
+datasets/
+test files/
+training/real_photos/
+
+# Model checkpoint — downloaded on first inference, not baked into the image
+training/best_model.pt
+training/best_model*.pt
+*.pt
+
+# Test / dev artefacts
+*.png
+*.jpg
+*.jpeg
+*.zip

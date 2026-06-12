@@ -2,6 +2,8 @@
 
 import logging
 import os
+import re
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -13,9 +15,62 @@ from .metadata import has_camera_exif
 log = logging.getLogger(__name__)
 
 _DEFAULT_MODEL_PATH = Path(__file__).parents[2] / "training" / "best_model.pt"
+_GDRIVE_FILE_ID = "1pJTM4dlQwJDvKLA74yxsPlOCS-B2Njr3"
+_GDRIVE_BASE_URL = "https://drive.google.com/uc"
 
 _IMAGENET_MEAN = [0.485, 0.456, 0.406]
 _IMAGENET_STD = [0.229, 0.224, 0.225]
+
+
+def _download_model(dest: Path) -> None:
+    """Fetch best_model_v3.pt from Google Drive and save to *dest*.
+
+    Google Drive serves a virus-scan HTML confirmation page for files over ~25 MB.
+    We detect that by content-type, extract the confirm token, and re-request the
+    actual binary.  The file is streamed in 1 MB chunks to a temp path, then
+    atomically renamed so a partial download never leaves a corrupt checkpoint.
+    """
+    import requests
+
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    params = {"export": "download", "id": _GDRIVE_FILE_ID}
+    session = requests.Session()
+
+    log.info(
+        "MLAnalyzer: model not found — downloading from Google Drive "
+        "(file_id=%s) → %s", _GDRIVE_FILE_ID, dest
+    )
+
+    # First request (streaming) — large files get an HTML confirmation page.
+    resp = session.get(_GDRIVE_BASE_URL, params=params, stream=True, timeout=30)
+    resp.raise_for_status()
+
+    if "text/html" in resp.headers.get("content-type", ""):
+        # Confirmation page is small HTML; consume it to extract the token.
+        body = resp.content.decode("utf-8", errors="replace")
+        m = re.search(r'confirm=([0-9A-Za-z_\-]+)', body)
+        token = m.group(1) if m else "t"
+        log.info("MLAnalyzer: Google Drive virus-scan confirmation (token=%r) — retrying", token)
+        params["confirm"] = token
+        resp = session.get(_GDRIVE_BASE_URL, params=params, stream=True, timeout=30)
+        resp.raise_for_status()
+
+    # Stream to a sibling temp file, then rename atomically.
+    tmp = dest.with_suffix(".downloading")
+    try:
+        downloaded = 0
+        with open(tmp, "wb") as f:
+            for chunk in resp.iter_content(chunk_size=1 << 20):  # 1 MB
+                f.write(chunk)
+                downloaded += len(chunk)
+        log.info(
+            "MLAnalyzer: download complete — %.1f MB written, moving to %s",
+            downloaded / 1e6, dest,
+        )
+        tmp.rename(dest)
+    except Exception:
+        tmp.unlink(missing_ok=True)
+        raise
 
 
 class MLAnalyzer(BaseAnalyzer):
@@ -36,30 +91,28 @@ class MLAnalyzer(BaseAnalyzer):
 
         model_path = Path(os.environ.get("SLOP_MODEL_PATH", _DEFAULT_MODEL_PATH))
         log.info("MLAnalyzer: looking for model at %s (exists=%s)", model_path, model_path.exists())
-        if not model_path.exists():
-            log.warning("MLAnalyzer: model file not found at %s — skipping ML analysis", model_path)
-            return AnalysisResult(
-                analyzer=self.name,
-                ai_percentage=50.0,
-                confidence=0.1,
-                indicators=[f"Model file not found ({model_path}) — ML analysis skipped"],
-            )
 
-        # A ~130-byte file starting with "version https://git-lfs..." means the
-        # checkout has the Git LFS pointer instead of the real 94MB checkpoint.
-        if model_path.stat().st_size < 1024:
+        # Download if missing or if we only have the Git LFS pointer stub.
+        needs_download = not model_path.exists()
+        if not needs_download and model_path.stat().st_size < 1024:
             head = model_path.read_bytes()[:40]
             if head.startswith(b"version https://git-lfs"):
-                log.error(
-                    "MLAnalyzer: %s is a Git LFS pointer (%d bytes), not the model — "
-                    "run 'git lfs pull' or ensure LFS objects are pushed to this remote",
+                log.warning(
+                    "MLAnalyzer: %s is a Git LFS pointer (%d bytes) — will download real checkpoint",
                     model_path, model_path.stat().st_size,
                 )
+                needs_download = True
+
+        if needs_download:
+            try:
+                _download_model(model_path)
+            except Exception:
+                log.exception("MLAnalyzer: failed to download model from Google Drive")
                 return AnalysisResult(
                     analyzer=self.name,
                     ai_percentage=50.0,
                     confidence=0.0,
-                    indicators=[f"Model file is a Git LFS pointer ({model_path}) — ML analysis skipped"],
+                    indicators=["Model download failed — ML analysis skipped"],
                 )
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
