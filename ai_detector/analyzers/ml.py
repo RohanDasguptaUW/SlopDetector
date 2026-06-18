@@ -1,9 +1,9 @@
 """ResNet50 ML analyzer — loads a fine-tuned checkpoint and runs inference."""
 
+import html
 import logging
 import os
 import re
-import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -22,18 +22,54 @@ _IMAGENET_MEAN = [0.485, 0.456, 0.406]
 _IMAGENET_STD = [0.229, 0.224, 0.225]
 
 
+def _looks_like_html(first_bytes: bytes) -> bool:
+    head = first_bytes[:64].lstrip().lower()
+    return head.startswith(b"<!doctype html") or head.startswith(b"<html")
+
+
+def _resolve_confirm_request(session, body: str):
+    """Given the HTML virus-scan page, return (url, params) for the real download.
+
+    Modern Google Drive serves a <form id="download-form"> that POSTs/GETs to
+    drive.usercontent.google.com with hidden inputs (id, export, confirm, uuid).
+    Older variants embed a `confirm=<token>` link back on the uc endpoint.
+    We try the form first, then fall back to the legacy token.
+    """
+    form = re.search(
+        r'<form[^>]*id="download-form"[^>]*action="([^"]+)"', body, re.IGNORECASE
+    )
+    if form:
+        action = html.unescape(form.group(1))
+        inputs = re.findall(
+            r'<input[^>]*name="([^"]+)"[^>]*value="([^"]*)"', body, re.IGNORECASE
+        )
+        params = {name: html.unescape(val) for name, val in inputs}
+        params.setdefault("id", _GDRIVE_FILE_ID)
+        params.setdefault("export", "download")
+        params.setdefault("confirm", "t")
+        return action, params
+
+    # Legacy fallback: a confirm token in a link or the download_warning cookie.
+    m = re.search(r'confirm=([0-9A-Za-z_\-]+)', body)
+    token = m.group(1) if m else "t"
+    for k, v in session.cookies.items():
+        if k.startswith("download_warning"):
+            token = v
+    return _GDRIVE_BASE_URL, {"export": "download", "id": _GDRIVE_FILE_ID, "confirm": token}
+
+
 def _download_model(dest: Path) -> None:
     """Fetch best_model_v3.pt from Google Drive and save to *dest*.
 
-    Google Drive serves a virus-scan HTML confirmation page for files over ~25 MB.
-    We detect that by content-type, extract the confirm token, and re-request the
-    actual binary.  The file is streamed in 1 MB chunks to a temp path, then
-    atomically renamed so a partial download never leaves a corrupt checkpoint.
+    Google Drive serves an HTML virus-scan confirmation page for files over
+    ~25 MB instead of the binary. We follow the confirmation form to the real
+    download URL, stream the binary in 1 MB chunks to a temp path, verify it is
+    not itself an HTML page, then atomically rename so a partial or bogus
+    download never leaves a corrupt checkpoint in place.
     """
     import requests
 
     dest.parent.mkdir(parents=True, exist_ok=True)
-    params = {"export": "download", "id": _GDRIVE_FILE_ID}
     session = requests.Session()
 
     log.info(
@@ -41,28 +77,45 @@ def _download_model(dest: Path) -> None:
         "(file_id=%s) → %s", _GDRIVE_FILE_ID, dest
     )
 
-    # First request (streaming) — large files get an HTML confirmation page.
-    resp = session.get(_GDRIVE_BASE_URL, params=params, stream=True, timeout=30)
+    url = _GDRIVE_BASE_URL
+    params = {"export": "download", "id": _GDRIVE_FILE_ID}
+    resp = session.get(url, params=params, stream=True, timeout=60)
     resp.raise_for_status()
 
-    if "text/html" in resp.headers.get("content-type", ""):
-        # Confirmation page is small HTML; consume it to extract the token.
+    if "text/html" in resp.headers.get("content-type", "").lower():
         body = resp.content.decode("utf-8", errors="replace")
-        m = re.search(r'confirm=([0-9A-Za-z_\-]+)', body)
-        token = m.group(1) if m else "t"
-        log.info("MLAnalyzer: Google Drive virus-scan confirmation (token=%r) — retrying", token)
-        params["confirm"] = token
-        resp = session.get(_GDRIVE_BASE_URL, params=params, stream=True, timeout=30)
+        url, params = _resolve_confirm_request(session, body)
+        log.info("MLAnalyzer: Google Drive virus-scan page — following confirm to %s", url)
+        resp = session.get(url, params=params, stream=True, timeout=60)
         resp.raise_for_status()
+
+    ctype = resp.headers.get("content-type", "").lower()
+    if "text/html" in ctype:
+        raise RuntimeError(
+            f"Google Drive returned HTML, not the model binary (content-type={ctype!r}). "
+            "The file may be private or the confirm flow changed."
+        )
 
     # Stream to a sibling temp file, then rename atomically.
     tmp = dest.with_suffix(".downloading")
     try:
         downloaded = 0
+        first = b""
         with open(tmp, "wb") as f:
             for chunk in resp.iter_content(chunk_size=1 << 20):  # 1 MB
+                if not chunk:
+                    continue
+                if not first:
+                    first = chunk
+                    if _looks_like_html(first):
+                        raise RuntimeError(
+                            "Downloaded content is an HTML page, not the model binary "
+                            "(Google Drive confirm flow failed)."
+                        )
                 f.write(chunk)
                 downloaded += len(chunk)
+        if downloaded < 1 << 20:  # sanity: real checkpoint is ~94 MB
+            raise RuntimeError(f"Downloaded file is implausibly small ({downloaded} bytes).")
         log.info(
             "MLAnalyzer: download complete — %.1f MB written, moving to %s",
             downloaded / 1e6, dest,
