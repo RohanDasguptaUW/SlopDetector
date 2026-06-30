@@ -90,7 +90,14 @@ async def health():
 
 @app.get("/")
 async def index():
-    return FileResponse(_STATIC / "index.html", media_type="text/html")
+    # no-store so a redeploy is picked up immediately — otherwise the HF/CDN edge
+    # (and browsers) can serve a stale frontend long after the backend updates,
+    # which silently renders an old analyzer shape against the new /analyse JSON.
+    return FileResponse(
+        _STATIC / "index.html",
+        media_type="text/html",
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
+    )
 
 
 # ── Internal ML-only endpoint (HF Space) ─────────────────────────────────────
