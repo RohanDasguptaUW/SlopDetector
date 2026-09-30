@@ -40,6 +40,7 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(messag
 log = logging.getLogger("slopdetector")
 
 _HF_SPACE_URL  = os.environ.get("HF_SPACE_URL", "").rstrip("/")
+log.info("DEBUG: raw HF_SPACE_URL = %r", _HF_SPACE_URL)
 _ML_API_SECRET = os.environ.get("ML_API_SECRET", "")
 
 # Split mode: Render POSTs to HF Space for ResNet50; torch is never touched here.
